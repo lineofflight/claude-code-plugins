@@ -1,0 +1,16 @@
+{
+  "description": "Random consolidation trigger",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ $((RANDOM % 50)) -eq 0 ] && [ -d .claude/rem/patterns ] && find .claude/rem/patterns -name '*.md' -size +0 -print -quit | grep -q . && echo '{\"decision\": \"block\", \"reason\": \"Patterns have accumulated. Run /rem:consolidate now.\"}' || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}

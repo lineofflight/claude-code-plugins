@@ -1,0 +1,16 @@
+{
+  "name": "lineofflight",
+  "owner": {
+    "name": "Line of Light"
+  },
+  "metadata": {
+    "description": "A collection of Claude Code plugins"
+  },
+  "plugins": [
+    {
+      "name": "rem",
+      "source": "./plugins/rem",
+      "description": "Pattern to skill, like sleep consolidates memory"
+    }
+  ]
+}

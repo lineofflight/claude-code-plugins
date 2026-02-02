@@ -1,0 +1,9 @@
+{
+  "name": "rem",
+  "description": "Pattern-to-skill consolidation. Record observations during sessions, consolidate recurring patterns into skills.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Line of Light"
+  },
+  "repository": "https://github.com/lineofflight/claude-code-plugins"
+}
