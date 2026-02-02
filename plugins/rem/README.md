@@ -2,6 +2,8 @@
 
 > Forgetting is hard.
 
+![The Persistence of Memory](https://upload.wikimedia.org/wikipedia/en/d/dd/The_Persistence_of_Memory.jpg)
+
 Pattern-to-skill consolidation for Claude Code. Like sleep consolidates memory.
 
 ## Usage
