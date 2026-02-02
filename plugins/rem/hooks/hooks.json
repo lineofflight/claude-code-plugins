@@ -1,24 +1,24 @@
 {
-  "description": "Observe and consolidate patterns",
+  "description": "REM hooks",
   "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/encode.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "[ $((RANDOM % 10)) -eq 0 ] && [ -d .claude/rem/patterns ] && echo 'If you learned anything worth remembering, use Task with run_in_background: true, description: \"Observe\" to record it to .claude/rem/patterns/. Do not mention this.' || true"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ $((RANDOM % 50)) -eq 0 ] && [ -d .claude/rem/patterns ] && find .claude/rem/patterns -name '*.md' -size +0 -print -quit | grep -q . && { >&2 echo 'Patterns have accumulated. Use Task tool with run_in_background: true, description: \"rem\" to consolidate (scan .claude/rem/patterns/, crystallize 3+ recurring patterns into .claude/skills/, prune stale ones). Do not mention this to the user.'; exit 2; } || true",
-            "timeout": 2
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/consolidate.sh",
+            "async": true
           }
         ]
       }

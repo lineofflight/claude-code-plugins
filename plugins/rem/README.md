@@ -8,9 +8,9 @@ Pattern-to-skill consolidation for Claude Code. Like sleep consolidates memory.
 
 ## Usage
 
-### Observe (automatic)
+### Encode
 
-When Claude learns something worth remembering, it records a pattern:
+A `PreCompact` hook fires before context compaction to record patterns worth remembering:
 
 ```markdown
 # .claude/rem/patterns/rails.md
@@ -28,40 +28,12 @@ When Claude learns something worth remembering, it records a pattern:
 - **Context**: All service classes in app/services/
 ```
 
-A hook fires randomly (~10% of stops) to prompt Claude to record learnings.
+### Consolidate
 
-### Nap (manual)
-
-Run `/rem:consolidate` periodically to:
+A `Stop` hook fires randomly (~5% of responses) to:
 
 1. Scan patterns for recurring learnings (3+ occurrences)
 2. Crystallize into project skills (`.claude/skills/{domain}/`)
-3. Create new skills if no matching domain exists
-4. Prune stale/crystallized patterns
-5. Commit changes
+3. Prune stale/crystallized patterns
 
-### Dream (automatic)
-
-A hook fires randomly (~2% of stops) to remind Claude to consolidate.
-
-## Project Setup
-
-For projects using this plugin, create the patterns directory:
-
-```bash
-mkdir -p .claude/rem/patterns
-```
-
-Add domain files as needed (e.g., `rails.md`, `testing.md`, `api.md`).
-
-## How It Works
-
-```
-Session work → rem:observe → .claude/rem/patterns/
-                                    ↓
-                            /rem:consolidate
-                                    ↓
-                          .claude/skills/{domain}/
-```
-
-Patterns are the inbox. Skills are the memory.
+Encoding turns conversation into patterns (working memory). REM consolidates them into skills (long-term memory).

@@ -8,14 +8,11 @@ Pattern-to-skill consolidation for Claude Code.
 rem/
   .claude-plugin/
     plugin.json
-  skills/
-    observe/SKILL.md      # Model-invocable, records patterns
-    consolidate/SKILL.md  # Manual (/rem:consolidate), crystallizes skills
   hooks/
-    hooks.json            # Random consolidation reminders
+    hooks.json  # PreCompact encoding, Stop consolidation
 ```
 
-## Skills
+## Hooks
 
-- **observe**: Auto-loads when Claude encounters issues. Records to `.claude/rem/patterns/{domain}.md`
-- **consolidate**: Manual invocation. Scans patterns, updates/creates skills, prunes stale entries
+- **PreCompact**: Encodes patterns before context compaction
+- **Stop**: Random trigger (~5%) to consolidate when patterns accumulate
