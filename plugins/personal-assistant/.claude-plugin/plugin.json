@@ -1,0 +1,9 @@
+{
+  "name": "personal-assistant",
+  "description": "Personal productivity assistant with support for Google services (gog), and more",
+  "version": "0.1.0",
+  "author": {
+    "name": "Line of Flight"
+  },
+  "repository": "https://github.com/lineofflight/claude-code-plugins"
+}

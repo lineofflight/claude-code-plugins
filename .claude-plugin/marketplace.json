@@ -26,6 +26,11 @@
       "name": "git",
       "source": "./plugins/git",
       "description": "Git and GitHub conventions and workflows"
+    },
+    {
+      "name": "personal-assistant",
+      "source": "./plugins/personal-assistant",
+      "description": "Personal productivity assistant with support for Google services (gog), and more"
     }
   ]
 }
