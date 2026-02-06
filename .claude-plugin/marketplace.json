@@ -13,8 +13,8 @@
       "description": "Browser automation using Playwright"
     },
     {
-      "name": "rem",
-      "source": "./plugins/rem",
+      "name": "rem-sleep",
+      "source": "./plugins/rem-sleep",
       "description": "Pattern to skill, like sleep consolidates memory"
     },
     {
