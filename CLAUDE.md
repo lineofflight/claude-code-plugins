@@ -9,3 +9,7 @@ A collection of plugins for Claude Code.
 - [Headless](https://code.claude.com/docs/en/headless) — Running Claude Code in CI/scripts
 - [Hooks](https://code.claude.com/docs/en/hooks) — Hook events and configuration
 - [Hooks guide](https://code.claude.com/docs/en/hooks-guide) — Practical hook examples
+
+## Plugin Maintenance
+
+- When editing a plugin, bump the patch version in `plugin.json`
