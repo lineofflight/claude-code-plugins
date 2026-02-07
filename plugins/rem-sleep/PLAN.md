@@ -186,6 +186,29 @@ PROJECT_ID=$(echo -n "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | sha
 PATTERNS_DIR="$HOME/.claude/rem/patterns/$PROJECT_ID"
 ```
 
+### 10. Consolidation placement guidance: universal vs domain
+
+**Problem**: The consolidate prompt says "crystallize into `.claude/skills/{domain}/` or CLAUDE.md" but gives no guidance on when to choose which. The model makes ad-hoc decisions about where knowledge lands.
+
+**Solution**: Add explicit placement criteria to the consolidate prompt. The axis is **frequency of relevance**, not project vs user:
+
+- **CLAUDE.md** — Universal rules. Knowledge needed on virtually every task regardless of what files are being touched. Style conventions, return type patterns, error handling policy, project structure norms, naming conventions.
+- **Skills** — Domain knowledge. Knowledge relevant only when working in a specific area. Framework workarounds, library gotchas, API-specific patterns, tooling quirks.
+
+Both categories can be project-specific. "Always return Result types" is project-specific *and* universal (every service object, every task). "Polymorphic eager loading needs explicit type" is project-specific *and* domain (only when touching ActiveRecord polymorphic associations).
+
+**Why this matters**: CLAUDE.md is loaded every session, every turn. It's expensive context. Only truly universal rules should live there. Domain knowledge in skills is loaded on demand — it doesn't burn tokens when you're not working in that area.
+
+**Implementation**: Update the consolidate prompt with explicit criteria:
+```
+When placing consolidated knowledge:
+- CLAUDE.md: Rules that apply to EVERY task in this codebase (style, conventions,
+  return types, error handling, project structure). These burn context tokens every
+  turn — only universal rules justify that cost.
+- .claude/skills/{domain}/: Knowledge for a specific area (framework workarounds,
+  library gotchas, API patterns). Loaded on demand, not always.
+```
+
 ## Implementation Order
 
 Suggested priority based on impact and dependency:
