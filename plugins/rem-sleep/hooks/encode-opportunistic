@@ -1,0 +1,6 @@
+#!/bin/bash
+# Opportunistic encode: 10% chance on Stop hook
+# Captures patterns mid-session to guard against crashes/timeouts
+
+[ $((RANDOM % 10)) -eq 0 ] || exit 0
+exec "$(dirname "$0")/encode"
