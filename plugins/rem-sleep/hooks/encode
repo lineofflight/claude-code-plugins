@@ -1,19 +1,26 @@
 #!/bin/bash
-# Encode: Extract patterns from conversation before context compaction
+# Encode + Consolidate: Extract patterns from conversation, then crystallize into skills
 #
-# Triggers: PreCompact, SessionEnd (on clear), Stop (via encode-opportunistic)
-# Output: YAML-frontmatter pattern entries in ~/.claude/rem/patterns/<project>/
+# Triggers: PreCompact, SessionEnd (on clear)
+# Patterns: ~/.claude/rem/patterns/<project>/ (user-scoped, ephemeral)
+# Skills:   .claude/skills/{domain}/ (project-scoped, durable)
 
 # Compute project-scoped paths
 PROJECT_PATH=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 PROJECT_SLUG=$(echo "$PROJECT_PATH" | tr '/.' '-')
 PATTERNS_DIR="$HOME/.claude/rem/patterns/$PROJECT_SLUG"
+MEMORY_DIR="$HOME/.claude/projects/$PROJECT_SLUG/memory"
 mkdir -p "$PATTERNS_DIR"
 
 TODAY=$(date +%Y-%m-%d)
+CUTOFF=$(date -v-30d +%Y-%m-%d 2>/dev/null || date -d "30 days ago" +%Y-%m-%d)
 
 claude --print --dangerously-skip-permissions --model sonnet \
-  "Review this session transcript for patterns worth remembering:
+  "You are running two sequential memory tasks for this session.
+
+   ## Task 1: Encode
+
+   Review this session transcript for patterns worth remembering:
    - debugging with unclear root causes
    - tool failures and their resolutions
    - framework/library workarounds
@@ -42,6 +49,36 @@ claude --print --dangerously-skip-permissions --model sonnet \
    If the transcript contradicts an existing pattern, update or remove the stale entry.
 
    Skip if nothing notable.
+
+   ## Task 2: Consolidate
+
+   After encoding, consolidate patterns from $PATTERNS_DIR/:
+
+   1. Scan all .md files (except INDEX.md) for recurring learnings (3+ similar observations)
+   2. Crystallize into project skills or CLAUDE.md
+   3. Prune entries with date older than $CUTOFF
+   4. Remove patterns that were just consolidated into skills
+
+   PLACEMENT GUIDANCE:
+   - CLAUDE.md: Rules that apply to EVERY task in this codebase (style, conventions,
+     return types, error handling, project structure). These burn context tokens every
+     turn — only universal rules justify that cost.
+   - .claude/skills/{domain}/: Knowledge for a specific area (framework workarounds,
+     library gotchas, API patterns). Loaded on demand, not always.
+
+   SOURCE CITATIONS: When writing skills, include a provenance comment:
+   <!-- consolidated from: {domain}.md {date1}, {date2}, {date3} -->
+
+   MEMORY.md INTEGRATION:
+   - Write a one-liner summary of each new skill to $MEMORY_DIR/MEMORY.md (mkdir -p the directory)
+   - Scan $MEMORY_DIR/MEMORY.md for entries that duplicate knowledge now in .claude/skills/ and remove them
+   - Keep MEMORY.md entries minimal — just a reference, not a copy
+
+   Constraints:
+   - Skills go in project-scoped .claude/skills/
+   - Keep concise
+   - Preserve entries that are < 30 days old and haven't been consolidated
+   - Skip consolidation if there is nothing to consolidate
 
    $ARGUMENTS"
 

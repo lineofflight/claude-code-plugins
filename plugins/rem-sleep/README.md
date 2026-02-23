@@ -10,10 +10,10 @@ Pattern-to-skill consolidation for Claude Code. Like sleep consolidates memory.
 
 ```
 Session transcript (gold mine)
-        │ encode (PreCompact, SessionEnd, ~10% Stop)
+        │ encode (PreCompact, SessionEnd)
         ▼
 ~/.claude/rem/patterns/<project>/{domain}.md    (personal, ephemeral)
-        │ consolidate (~5% Stop)
+        │ consolidate (inside encode)
         ▼
 .claude/skills/{domain}/                        (shared, durable)
 ~/.claude/projects/<project>/memory/MEMORY.md   (auto memory sync)
@@ -23,7 +23,7 @@ User-scoped input, project-scoped output.
 
 ## Encode
 
-`PreCompact`, `SessionEnd` (on clear), and `Stop` (~10% chance) hooks extract patterns from conversation transcripts across 9 categories:
+The `encode` hook fires on `PreCompact` and `SessionEnd` (on clear). It extracts patterns from the conversation transcript across 9 categories:
 
 - Debugging insights
 - Tool failures and resolutions
@@ -49,16 +49,13 @@ tags: [activerecord, n+1, polymorphic]
 - **Context**: Polymorphic belongs_to with eager loading
 ```
 
-The encode hook also checks existing patterns for contradictions — if a session disproves a previous pattern, the stale entry is updated or removed.
+It also checks existing patterns for contradictions — if the session disproves a previous pattern, the stale entry is updated or removed.
 
-## Consolidate
+After encoding, the hook consolidates accumulated patterns in the same pass:
 
-A `Stop` hook fires randomly (~5% of responses) to:
-
-1. **Pre-filter** — count entries per domain, check for stale entries (>30 days). Skip the model call if nothing needs attention.
-2. **Crystallize** — find recurring learnings (3+ similar observations) and promote to project skills (`.claude/skills/{domain}/`) or `CLAUDE.md`.
-3. **Prune** — remove stale and consolidated patterns.
-4. **Sync** — write one-liner summaries of new skills to auto memory (`MEMORY.md`) and remove duplicate entries.
+1. **Crystallize** — find recurring learnings (3+ similar observations) and promote to project skills (`.claude/skills/{domain}/`) or `CLAUDE.md`.
+2. **Prune** — remove stale (>30 days) and consolidated patterns.
+3. **Sync** — write one-liner summaries of new skills to auto memory (`MEMORY.md`) and remove duplicate entries.
 
 ### Placement Guidance
 
