@@ -1,6 +1,6 @@
 ---
 name: browsing
-description: Browser automation for any web task. Use when navigating websites, checking UI, or automating workflows.
+description: Browser automation. MUST invoke before calling Playwright. Use when browsing websites, checking UI, filling forms, or automating web workflows.
 ---
 
 # Browsing
