@@ -1,0 +1,9 @@
+{
+  "name": "cloudflare",
+  "description": "Manage Cloudflare zones via the API",
+  "version": "0.1.0",
+  "author": {
+    "name": "Line of Flight"
+  },
+  "repository": "https://github.com/lineofflight/claude-code-plugins"
+}

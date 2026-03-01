@@ -26,6 +26,11 @@
       "name": "git",
       "source": "./plugins/git",
       "description": "Git and GitHub conventions and workflows"
+    },
+    {
+      "name": "cloudflare",
+      "source": "./plugins/cloudflare",
+      "description": "Manage Cloudflare zones via the API"
     }
   ]
 }
