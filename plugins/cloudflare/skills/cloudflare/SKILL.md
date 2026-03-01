@@ -9,10 +9,9 @@ argument-hint: "purge | dns | analytics | list-zones [zone]"
 
 ## Authentication
 
-All requests use Bearer token auth:
-
+All requests use `--oauth2-bearer` for auth:
 ```
--H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json"
+--oauth2-bearer "$CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json"
 ```
 
 ## Common operations
