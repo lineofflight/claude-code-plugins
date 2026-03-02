@@ -1,9 +1,0 @@
-{
-  "name": "rem-sleep",
-  "description": "Pattern to skill, like sleep consolidates memory",
-  "version": "0.5.2",
-  "author": {
-    "name": "Line of Flight"
-  },
-  "repository": "https://github.com/lineofflight/claude-code-plugins"
-}

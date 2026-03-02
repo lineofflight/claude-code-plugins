@@ -10,7 +10,6 @@ A collection of Claude Code plugins.
 | [playwright](plugins/playwright) | Browser automation using Playwright |
 | [claude-dev](plugins/claude-dev) | Guidance for extending Claude Code |
 | [git](plugins/git) | Git and GitHub conventions and workflows |
-| [rem-sleep](plugins/rem-sleep) | Pattern to skill, like sleep consolidates memory |
 
 ## Recommended Third-Party Plugins
 
