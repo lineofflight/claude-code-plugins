@@ -13,11 +13,6 @@
       "description": "Browser automation using Playwright"
     },
     {
-      "name": "claude-dev",
-      "source": "./plugins/claude-dev",
-      "description": "Tools and guidance for extending Claude Code"
-    },
-    {
       "name": "git",
       "source": "./plugins/git",
       "description": "Git and GitHub conventions and workflows"
@@ -26,6 +21,11 @@
       "name": "cloudflare",
       "source": "./plugins/cloudflare",
       "description": "Manage Cloudflare zones via the API"
+    },
+    {
+      "name": "voice",
+      "source": "./plugins/voice",
+      "description": "Voice input and output for Claude Code"
     }
   ]
 }

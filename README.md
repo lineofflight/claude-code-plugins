@@ -8,8 +8,8 @@ A collection of Claude Code plugins.
 |--------|-------------|
 | [cloudflare](plugins/cloudflare) | Manage Cloudflare zones via the API |
 | [playwright](plugins/playwright) | Browser automation using Playwright |
-| [claude-dev](plugins/claude-dev) | Guidance for extending Claude Code |
 | [git](plugins/git) | Git and GitHub conventions and workflows |
+| [voice](plugins/voice) | Voice input and output for Claude Code |
 
 ## Recommended Third-Party Plugins
 
