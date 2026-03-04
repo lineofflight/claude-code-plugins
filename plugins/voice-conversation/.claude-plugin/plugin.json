@@ -1,0 +1,9 @@
+{
+  "name": "voice-conversation",
+  "description": "Voice conversational UI for Claude Code using ElevenLabs STT and TTS",
+  "version": "0.1.0",
+  "author": {
+    "name": "Line of Flight"
+  },
+  "repository": "https://github.com/lineofflight/claude-code-plugins"
+}

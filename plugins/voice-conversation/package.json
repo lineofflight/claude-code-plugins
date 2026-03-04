@@ -1,0 +1,10 @@
+{
+  "name": "voice-conversation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Voice conversational UI for Claude Code using ElevenLabs STT and TTS",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

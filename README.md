@@ -10,6 +10,7 @@ A collection of Claude Code plugins.
 | [playwright](plugins/playwright) | Browser automation using Playwright |
 | [claude-dev](plugins/claude-dev) | Guidance for extending Claude Code |
 | [git](plugins/git) | Git and GitHub conventions and workflows |
+| [voice-conversation](plugins/voice-conversation) | Voice conversational UI using ElevenLabs STT and TTS |
 
 ## Recommended Third-Party Plugins
 

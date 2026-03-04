@@ -26,6 +26,11 @@
       "name": "cloudflare",
       "source": "./plugins/cloudflare",
       "description": "Manage Cloudflare zones via the API"
+    },
+    {
+      "name": "voice-conversation",
+      "source": "./plugins/voice-conversation",
+      "description": "Voice conversational UI using ElevenLabs STT and TTS"
     }
   ]
 }
