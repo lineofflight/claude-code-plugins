@@ -26,6 +26,11 @@
       "name": "voice",
       "source": "./plugins/voice",
       "description": "Voice input and output for Claude Code"
+    },
+    {
+      "name": "retro",
+      "source": "./plugins/retro",
+      "description": "Session gap extraction and skill consolidation"
     }
   ]
 }
