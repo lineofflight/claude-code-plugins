@@ -3,7 +3,7 @@
 input="$(cat)"
 
 # Check if stop hook is active (avoid recursion)
-echo "$input" | grep -q '"stop_hook_active":\s*true' && exit 0
+echo "$input" | grep -q '"stop_hook_active":[ ]*true' && exit 0
 
 # Check if voice is active (manual toggle or native voice detected this turn)
 spokefile="/tmp/cc-voice-spoke.$PPID"
