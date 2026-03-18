@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 
-[[ -n "${ELEVENLABS_API_KEY:-}" ]] || exit 0
-
 input="$(cat)"
 
-[[ "$(echo "$input" | jq -r '.stop_hook_active // false')" == "true" ]] && exit 0
+# Check if stop hook is active (avoid recursion)
+echo "$input" | grep -q '"stop_hook_active":\s*true' && exit 0
 
 # Check if voice is active (manual toggle or native voice detected this turn)
 spokefile="/tmp/cc-voice-spoke.$PPID"
@@ -12,9 +11,9 @@ if [[ ! -f /tmp/cc-voice-toggle ]] && [[ ! -f "$spokefile" ]]; then
   exit 0
 fi
 
-# Clean spoke file early so it's cleared even if TTS fails
 rm -f "$spokefile"
 
+# Extract last_assistant_message
 text="$(echo "$input" | jq -r '.last_assistant_message // empty')"
 [[ -z "$text" ]] && exit 0
 
@@ -27,28 +26,10 @@ text="$(echo "$text" | \
   sed 's/  */ /g; s/^ //; s/ $//')"
 [[ -z "$text" ]] && exit 0
 
-if (( ${#text} > 500 )); then
-  text="${text:0:500}"
-  text="${text% *}..."
-fi
-
-# TTS via ElevenLabs
-voice_id="${ELEVENLABS_VOICE_ID:-21m00Tcm4TlvDq8ikWAM}"
-tmpfile="$(mktemp /tmp/voice-XXXXXX.mp3)"
-trap 'rm -f "$tmpfile"' EXIT
-
-curl -s \
-  -X POST "https://api.elevenlabs.io/v1/text-to-speech/${voice_id}/stream" \
-  -H "xi-api-key: ${ELEVENLABS_API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d "$(jq -n --arg t "$text" '{text: $t, model_id: "eleven_flash_v2_5"}')" \
-  -o "$tmpfile"
-
-[[ -s "$tmpfile" ]] || exit 0
-
-pidfile="/tmp/cc-voice-afplay.$PPID"
-afplay "$tmpfile" &
-afplay_pid=$!
-echo "$afplay_pid" > "$pidfile"
-wait "$afplay_pid" 2>/dev/null || true
+# TTS via macOS say
+pidfile="/tmp/cc-voice-say.$PPID"
+say "$text" &
+say_pid=$!
+echo "$say_pid" > "$pidfile"
+wait "$say_pid" 2>/dev/null || true
 rm -f "$pidfile"
