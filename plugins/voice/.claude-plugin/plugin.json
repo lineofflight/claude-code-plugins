@@ -1,0 +1,7 @@
+{
+  "name": "voice",
+  "description": "Voice input and output for Claude Code",
+  "version": "0.1.0",
+  "author": { "name": "Line of Flight" },
+  "repository": "https://github.com/lineofflight/claude-code-plugins"
+}
