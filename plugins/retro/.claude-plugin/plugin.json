@@ -1,0 +1,7 @@
+{
+  "name": "retro",
+  "description": "Session gap extraction and skill consolidation",
+  "version": "0.1.0",
+  "author": { "name": "Line of Flight" },
+  "repository": "https://github.com/lineofflight/claude-code-plugins"
+}
