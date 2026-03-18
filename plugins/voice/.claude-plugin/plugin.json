@@ -1,7 +1,7 @@
 {
   "name": "voice",
   "description": "Text-to-speech output and barge-in for Claude Code",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": { "name": "Line of Flight" },
   "repository": "https://github.com/lineofflight/claude-code-plugins"
 }

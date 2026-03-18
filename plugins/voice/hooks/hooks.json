@@ -1,23 +1,12 @@
 {
-  "description": "TTS output with barge-in and automatic voice detection",
+  "description": "TTS output and voice detection for Claude Code",
   "hooks": {
-    "SessionStart": [
+    "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/watcher-start.sh",
-            "async": true
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/watcher-stop.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/voice-context.sh"
           }
         ]
       }

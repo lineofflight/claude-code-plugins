@@ -3,13 +3,14 @@
 Text-to-speech output for Claude Code. Speaks Claude's responses aloud using
 macOS `say`.
 
-## Modes
+## How it works
 
-- **Native voice** (CC built-in `/voice`): Fully automatic. Detects microphone,
-  speaks back only when you used voice input. Barge-in support -- start speaking
-  and playback stops.
-- **Manual toggle**: Use `/tts` to toggle on/off. Claude speaks all responses
-  while toggled on.
+When you use CC's built-in `/voice`, the plugin automatically detects it and:
+
+- Injects conversational context so responses are natural and spoken-friendly
+- Speaks responses aloud via macOS `say`, stripping markdown artifacts
+
+No configuration or manual toggle needed.
 
 ## Requirements
 
