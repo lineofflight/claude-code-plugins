@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 
-# Detect CC's native /voice via Apple's speech recognition process
-if pgrep -f embeddedspeech >/dev/null 2>&1; then
-  echo '{"additionalContext": "User spoke via voice. Be conversational. Your final message will be spoken aloud, so keep it to a sentence or two."}'
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Detect voice input via mic watcher timestamp
+ts_file="$SCRIPT_DIR/run/last-spoken"
+if [[ -f "$ts_file" ]]; then
+  last_spoken=$(cat "$ts_file")
+  now=$(date +%s)
+  if (( now - last_spoken <= 600 )); then
+    echo '{"additionalContext": "User spoke via voice. If the answer is short, be conversational. Replies under 30 words will be spoken aloud. If it requires code or detailed explanation, respond normally."}'
+  fi
 fi
