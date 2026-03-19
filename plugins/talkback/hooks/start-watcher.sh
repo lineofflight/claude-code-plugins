@@ -2,7 +2,7 @@
 
 # macOS only — CoreAudio mic watcher requires Darwin
 if [[ "$(uname)" != "Darwin" ]]; then
-  echo "voice: mic watcher requires macOS" >&2
+  echo "talkback: mic watcher requires macOS" >&2
   exit 0
 fi
 

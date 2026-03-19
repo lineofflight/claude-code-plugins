@@ -33,5 +33,5 @@ word_count=$(echo "$text" | wc -w | tr -d ' ')
 
 # Speak via wrapper (supports barge-in), then clear the toggle
 # so user must speak again to trigger TTS on the next turn
-"$SCRIPT_DIR/speak.sh" "$text"
+"$SCRIPT_DIR/talkback.sh" "$text"
 rm -f "$ts_file"

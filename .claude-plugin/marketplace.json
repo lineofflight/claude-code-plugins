@@ -23,9 +23,9 @@
       "description": "Manage Cloudflare zones via the API"
     },
     {
-      "name": "voice",
-      "source": "./plugins/voice",
-      "description": "Voice input and output for Claude Code"
+      "name": "talkback",
+      "source": "./plugins/talkback",
+      "description": "Text-to-speech output and barge-in for Claude Code"
     },
     {
       "name": "retro",

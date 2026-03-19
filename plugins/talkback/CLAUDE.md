@@ -1,4 +1,4 @@
-# Voice Plugin Dev Notes
+# Talkback Plugin Dev Notes
 
 ## Building the watcher
 
@@ -17,13 +17,22 @@ The binary is shipped with the plugin. `start-watcher.sh` will recompile automat
 ## Architecture
 
 - `watcher.swift` — CoreAudio listener, detects mic on/off, writes `run/last-spoken` timestamp, kills TTS PID on barge-in
-- `speak.sh` — TTS wrapper, writes `run/tts.pid` so watcher can kill it, `exec say` for direct PID targeting
+- `talkback.sh` — TTS engine wrapper, supports `say` (default) and ElevenLabs, writes `run/tts.pid` for barge-in
 - `start-watcher.sh` — compiles (if needed), starts watcher, manages `run/watcher.pid`
-- `tts.sh` — Stop hook: strips markdown, delegates to `speak.sh`, removes `last-spoken` after speaking (per-turn toggle)
+- `tts.sh` — Stop hook: strips markdown, delegates to `talkback.sh`, removes `last-spoken` after speaking (per-turn toggle)
 - `voice-context.sh` — UserPromptSubmit hook: injects conversational context if `last-spoken` is recent
+
+## Configuration
+
+Engine is configured via env vars in `~/.claude/settings.json`. Use `/talkback` skill to set up.
+
+- `TALKBACK_ENGINE` — `say` (default) or `elevenlabs`
+- `ELEVENLABS_API_KEY` — required for ElevenLabs
+- `ELEVENLABS_VOICE_ID` — optional, defaults to Rachel
 
 ## State files (`hooks/run/`, gitignored)
 
 - `last-spoken` — unix timestamp, acts as a per-turn voice toggle
-- `tts.pid` — PID of active `say` process for barge-in
+- `tts.pid` — PID of active TTS process for barge-in
+- `tts.mp3` — temporary audio file for ElevenLabs playback
 - `watcher.pid` — PID of watcher daemon
