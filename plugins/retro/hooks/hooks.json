@@ -22,6 +22,16 @@
             "async": true
           }
         ]
+      },
+      {
+        "matcher": "prompt_input_exit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/observe",
+            "async": true
+          }
+        ]
       }
     ]
   }
