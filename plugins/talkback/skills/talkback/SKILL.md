@@ -4,17 +4,25 @@ description: Configure TTS engine for the talkback plugin. Use when user types /
 user_invocable: true
 ---
 
-Help the user configure their TTS engine for the talkback plugin.
+Configure the talkback plugin's TTS engine using structured prompts.
 
-Ask which engine they want:
-1. **say** (default) — macOS built-in, no setup needed
-2. **ElevenLabs** — high-quality AI voices, requires API key
+## Step 1: Choose engine
 
-If they choose ElevenLabs, ask for:
-- API key (required)
-- Voice ID (optional — default is Rachel, `21m00Tcm4TlvDq8ikWAM`)
+Use AskUserQuestion to ask which TTS engine to use:
 
-## Where to save
+- **say (Recommended)** — macOS built-in, no setup needed
+- **ElevenLabs** — high-quality AI voices, requires API key
+
+## Step 2: ElevenLabs setup (if selected)
+
+If the user chose ElevenLabs, use AskUserQuestion to ask for:
+
+- **API key** — provide a single option "I have my API key ready" so they can enter it via "Other" as free text
+- **Voice** — offer presets: Rachel (default), Adam, Bella, or custom ID via "Other"
+
+You can combine both into one AskUserQuestion call with two questions.
+
+## Step 3: Save config
 
 Check the plugin's install scope in `~/.claude/plugins/installed_plugins.json` under `plugins["talkback@lineofflight"][0].scope`.
 
