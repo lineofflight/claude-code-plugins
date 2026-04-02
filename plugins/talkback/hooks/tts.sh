@@ -7,13 +7,6 @@ input="$(cat)"
 # Check if stop hook is active (avoid recursion)
 echo "$input" | grep -q '"stop_hook_active":[ ]*true' && exit 0
 
-# Only speak when a voice prompt was submitted this session
-ts_file="$SCRIPT_DIR/run/last-spoken"
-[[ -f "$ts_file" ]] || exit 0
-last_spoken=$(cat "$ts_file")
-now=$(date +%s)
-(( now - last_spoken > 600 )) && { rm -f "$ts_file"; exit 0; }
-
 # Extract last_assistant_message
 text="$(echo "$input" | jq -r '.last_assistant_message // empty')"
 [[ -z "$text" ]] && exit 0
@@ -27,11 +20,19 @@ text="$(echo "$text" | \
   sed 's/  */ /g; s/^ //; s/ $//')"
 [[ -z "$text" ]] && exit 0
 
-# Skip speaking long responses (likely code-heavy)
-word_count=$(echo "$text" | wc -w | tr -d ' ')
-(( word_count > 30 )) && { rm -f "$ts_file"; exit 0; }
+# Only speak if the response starts with a natural speech word
+speak=false
+text_lower="$(echo "$text" | tr '[:upper:]' '[:lower:]')"
+while IFS= read -r starter; do
+  [[ -z "$starter" ]] && continue
+  starter_lower="$(echo "$starter" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$text_lower" =~ ^"$starter_lower"([^a-z]|$) ]]; then
+    speak=true
+    break
+  fi
+done < "$SCRIPT_DIR/speech-starters.txt"
+$speak || exit 0
 
-# Speak via wrapper (supports barge-in), then clear the toggle
-# so user must speak again to trigger TTS on the next turn
+# Speak via wrapper (supports barge-in), then clear the voice toggle
 "$SCRIPT_DIR/talkback.sh" "$text"
-rm -f "$ts_file"
+rm -f "$SCRIPT_DIR/run/last-spoken"

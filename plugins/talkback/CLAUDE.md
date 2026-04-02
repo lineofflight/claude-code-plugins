@@ -19,8 +19,9 @@ The binary is shipped with the plugin. `start-watcher.sh` will recompile automat
 - `watcher.swift` — CoreAudio listener, detects mic on/off, writes `run/last-spoken` timestamp, kills TTS PID on barge-in
 - `talkback.sh` — TTS engine wrapper, supports `say` (default) and ElevenLabs, writes `run/tts.pid` for barge-in
 - `start-watcher.sh` — compiles (if needed), starts watcher, manages `run/watcher.pid`
-- `tts.sh` — Stop hook: strips markdown, delegates to `talkback.sh`, removes `last-spoken` after speaking (per-turn toggle)
-- `voice-context.sh` — UserPromptSubmit hook: injects conversational context if `last-spoken` is recent
+- `tts.sh` — Stop hook: strips markdown, checks for speech starter words, delegates to `talkback.sh`
+- `voice-context.sh` — UserPromptSubmit hook: injects conversational context prompting speech starters for voice-like input
+- `speech-starters.txt` — shared word list used by both `voice-context.sh` (prompt) and `tts.sh` (detection)
 
 ## Configuration
 
