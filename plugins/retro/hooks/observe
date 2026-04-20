@@ -11,7 +11,7 @@ mkdir -p "$RETRO_DIR"
 
 TODAY=$(date +%Y-%m-%d)
 
-claude --print --dangerously-skip-permissions --model haiku \
+claude --print --dangerously-skip-permissions --no-session-persistence --model haiku \
   "You are a session observer. Review this session transcript for gaps worth noting.
 
    Classify each gap into exactly one category:
