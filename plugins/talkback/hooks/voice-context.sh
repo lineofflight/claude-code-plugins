@@ -15,4 +15,4 @@ while IFS= read -r line; do
   [[ -n "$line" ]] && starters="${starters:+$starters, }$line"
 done < "$SCRIPT_DIR/speech-starters.txt"
 
-echo "User spoke via voice. Be conversational and start with a natural speech word ($starters) so it gets spoken aloud. If it requires code or detailed explanation, respond normally."
+echo "User spoke with STT. If you would like to speak back with TTS, be conversational, keep it short, and start with a speech word ($starters)."
