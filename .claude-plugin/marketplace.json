@@ -26,11 +26,6 @@
       "name": "talkback",
       "source": "./plugins/talkback",
       "description": "Text-to-speech output and barge-in for Claude Code"
-    },
-    {
-      "name": "retro",
-      "source": "./plugins/retro",
-      "description": "Session gap extraction and skill consolidation"
     }
   ]
 }
