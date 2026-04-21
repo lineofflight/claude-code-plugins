@@ -86,7 +86,7 @@ gh api graphql -f query='mutation {
 
 ```bash
 gh api graphql -f query='{
-  repository(owner: "ORG", name: "REPO") {
+  repository(owner: "OWNER", name: "REPO") {
     issue(number: N) {
       projectItems(first: 20) {
         nodes { id project { id title number } }
