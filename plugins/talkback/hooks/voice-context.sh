@@ -16,3 +16,7 @@ while IFS= read -r line; do
 done < "$SCRIPT_DIR/speech-starters.txt"
 
 echo "User spoke with STT. If you would like to speak back with TTS, be conversational, keep it short, and start with a speech word ($starters)."
+
+# One-shot: watcher rewrites the timestamp on the next mic-off, so clear it
+# now to avoid nudging subsequent typed turns within the 10-min window.
+rm -f "$ts_file"
