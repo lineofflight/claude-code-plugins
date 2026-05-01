@@ -1,0 +1,7 @@
+{
+  "name": "tint-when-busy",
+  "description": "Tint the terminal pane background when Claude is working",
+  "version": "0.1.0",
+  "author": { "name": "Line of Flight" },
+  "repository": "https://github.com/lineofflight/claude-code-plugins"
+}
