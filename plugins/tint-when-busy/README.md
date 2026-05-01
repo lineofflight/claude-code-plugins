@@ -6,10 +6,10 @@ Implementation: hooks emit OSC 11 to `/dev/tty` to set/reset the pane background
 
 ## How the tint color is chosen
 
-Reads Ghostty's configured background via `ghostty +show-config` and shifts each RGB channel by 8. Direction comes from the bg's own brightness:
+Reads Ghostty's configured background via `ghostty +show-config` and shifts each RGB channel by 10. Direction comes from the bg's own brightness:
 
-- If bg is light (mean channel > 127): subtract 8 → tint is slightly darker
-- If bg is dark: add 8 → tint is slightly lighter
+- If bg is light (mean channel > 127): subtract 10 → tint is slightly darker
+- If bg is dark: add 10 → tint is slightly lighter
 
 No OS-level theme detection — the bg color decides. Switch Ghostty themes and the tint follows automatically.
 

@@ -2,7 +2,7 @@
 # Tint or clear the pane background based on session state.
 # Usage: tint.sh <waiting|working>
 #
-# Reads Ghostty's configured background and shifts each RGB channel by 8.
+# Reads Ghostty's configured background and shifts each RGB channel by 10.
 # Direction is decided by the bg's own brightness — light bgs darken, dark
 # bgs lighten — so it works on any Ghostty theme without OS-level detection.
 
@@ -29,9 +29,9 @@ else
     direction=1
 fi
 
-r=$((r + direction * 8))
-g=$((g + direction * 8))
-b=$((b + direction * 8))
+r=$((r + direction * 10))
+g=$((g + direction * 10))
+b=$((b + direction * 10))
 clamp() { local v=$1; [ $v -lt 0 ] && v=0; [ $v -gt 255 ] && v=255; printf '%02x' $v; }
 
 printf '\033]11;#%s%s%s\007' "$(clamp $r)" "$(clamp $g)" "$(clamp $b)" >/dev/tty 2>/dev/null
