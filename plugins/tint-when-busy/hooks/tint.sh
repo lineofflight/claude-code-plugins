@@ -2,9 +2,9 @@
 # Tint or clear the pane background based on session state.
 # Usage: tint.sh <waiting|working>
 #
-# Reads Ghostty's configured background and shifts each RGB channel by 10.
-# Direction is decided by the bg's own brightness — light bgs darken, dark
-# bgs lighten — so it works on any Ghostty theme without OS-level detection.
+# Resolves Ghostty's active theme (handling `theme = light:X,dark:Y` split
+# syntax via macOS appearance) and shifts each RGB channel by 10. Direction
+# is decided by the bg's own brightness — light bgs darken, dark bgs lighten.
 
 state="$1"
 
@@ -15,7 +15,33 @@ if [ "$state" = "waiting" ]; then
     exit 0
 fi
 
-bg=$(command -v ghostty >/dev/null && ghostty +show-config 2>/dev/null | awk '$1=="background"{print $3; exit}')
+command -v ghostty >/dev/null || exit 0
+
+resolve_bg() {
+    local theme_line theme_name path
+    theme_line=$(ghostty +show-config 2>/dev/null | sed -n 's/^theme = //p' | head -1)
+    if [[ "$theme_line" =~ ^light:(.+),dark:(.+)$ ]]; then
+        if [ "$(defaults read -g AppleInterfaceStyle 2>/dev/null)" = "Dark" ]; then
+            theme_name="${BASH_REMATCH[2]}"
+        else
+            theme_name="${BASH_REMATCH[1]}"
+        fi
+    elif [ -n "$theme_line" ]; then
+        theme_name="$theme_line"
+    fi
+    if [ -n "$theme_name" ]; then
+        for path in "$HOME/.config/ghostty/themes/$theme_name" \
+                    "/Applications/Ghostty.app/Contents/Resources/ghostty/themes/$theme_name"; do
+            if [ -r "$path" ]; then
+                awk '$1=="background"{print $3; exit}' "$path"
+                return
+            fi
+        done
+    fi
+    ghostty +show-config 2>/dev/null | awk '$1=="background"{print $3; exit}'
+}
+
+bg=$(resolve_bg)
 bg="${bg#\#}"
 [ ${#bg} -eq 6 ] || exit 0
 
