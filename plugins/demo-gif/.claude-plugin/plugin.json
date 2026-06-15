@@ -1,0 +1,9 @@
+{
+  "name": "demo-gif",
+  "description": "Record a clean terminal/REPL demo as an animated GIF with vhs",
+  "version": "0.1.0",
+  "author": {
+    "name": "Line of Flight"
+  },
+  "repository": "https://github.com/lineofflight/claude-code-plugins"
+}
