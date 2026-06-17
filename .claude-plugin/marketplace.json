@@ -23,11 +23,6 @@
       "description": "Manage Cloudflare zones via the API"
     },
     {
-      "name": "talkback",
-      "source": "./plugins/talkback",
-      "description": "Text-to-speech output and barge-in for Claude Code"
-    },
-    {
       "name": "tint-when-busy",
       "source": "./plugins/tint-when-busy",
       "description": "Tint the terminal pane background when Claude is working"
