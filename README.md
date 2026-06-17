@@ -10,6 +10,7 @@ A collection of Claude Code plugins.
 | [playwright](plugins/playwright) | Browser automation using Playwright |
 | [git](plugins/git) | Git and GitHub conventions and workflows |
 | [talkback](plugins/talkback) | Text-to-speech output and barge-in for Claude Code |
+| [tint-when-busy](plugins/tint-when-busy) | Tint the terminal pane background when Claude is working |
 | [statusline](plugins/statusline) | Starship-style status line with context and rate-limit usage bars |
 
 ## Recommended Third-Party Plugins
