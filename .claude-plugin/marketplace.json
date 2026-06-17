@@ -23,11 +23,6 @@
       "description": "Manage Cloudflare zones via the API"
     },
     {
-      "name": "tint-when-busy",
-      "source": "./plugins/tint-when-busy",
-      "description": "Tint the terminal pane background when Claude is working"
-    },
-    {
       "name": "demo-gif",
       "source": "./plugins/demo-gif",
       "description": "Record a clean terminal/REPL demo as an animated GIF with vhs"
