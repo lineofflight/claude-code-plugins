@@ -36,6 +36,11 @@
       "name": "demo-gif",
       "source": "./plugins/demo-gif",
       "description": "Record a clean terminal/REPL demo as an animated GIF with vhs"
+    },
+    {
+      "name": "statusline",
+      "source": "./plugins/statusline",
+      "description": "Starship-style status line with context and rate-limit usage bars"
     }
   ]
 }

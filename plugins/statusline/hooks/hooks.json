@@ -1,0 +1,8 @@
+{
+  "description": "Keep ~/.claude/statusline.sh synced with the plugin's bundled script.",
+  "hooks": {
+    "SessionStart": [{
+      "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/sync.sh" }]
+    }]
+  }
+}
