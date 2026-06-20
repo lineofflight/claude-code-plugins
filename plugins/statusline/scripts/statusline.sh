@@ -13,6 +13,7 @@ seven_d_pct=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // e
 seven_d_reset=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
 
 dir_name=$(basename "$current_dir")
+display_name="$dir_name"  # may be swapped for the project name in worktrees (see below)
 
 # Starship-style colors (ANSI-C $'...' embeds real ESC bytes, works even on bash 3.2)
 cyan=$'\033[1;36m'
@@ -30,6 +31,15 @@ git_info=""
 if git -C "$current_dir" rev-parse --git-dir > /dev/null 2>&1; then
     branch=$(git -C "$current_dir" branch --show-current 2>/dev/null)
     [ -z "$branch" ] && branch="detached"
+
+    # In a worktree whose folder is named after its branch, the dir name and the
+    # "on <branch>" segment would say the same thing. Show the project (main repo)
+    # name instead so the two segments carry distinct info. --git-common-dir points
+    # at the main repo's .git; its parent dir is the project root.
+    if [ "$branch" = "$dir_name" ]; then
+        common=$(git -C "$current_dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+        [ -n "$common" ] && display_name=$(basename "$(dirname "$common")")
+    fi
 
     dirty=""
     if ! git --no-optional-locks -C "$current_dir" diff --quiet 2>/dev/null || \
@@ -101,4 +111,4 @@ fi
 
 usage_display="$(draw_bar "$used_pct" "" 10)${model_seg}${effort_seg}$(fmt_pct "$five_h_pct" "5h" 50 75 50)$(fmt_pct "$seven_d_pct" "7d" 50 75 "$seven_d_min")"
 
-printf "%s%s%b\n" "${cyan}${dir_name}${reset}" "$git_info" "$usage_display"
+printf "%s%s%b\n" "${cyan}${display_name}${reset}" "$git_info" "$usage_display"

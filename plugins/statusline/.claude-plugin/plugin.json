@@ -1,7 +1,7 @@
 {
   "name": "statusline",
   "description": "Starship-style status line: directory, git branch, model/effort, and context + rate-limit usage bars",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": { "name": "Line of Flight" },
   "repository": "https://github.com/lineofflight/claude-code-plugins"
 }
