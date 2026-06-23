@@ -1,0 +1,492 @@
+#!/usr/bin/env node
+/**
+ * agy-driver: drive Google Antigravity (`agy`) coding sessions as "workers",
+ * mirroring claude-session-driver's command vocabulary (launch / send / converse
+ * / wait-for-turn / status / read-turn / read-events / stop / handoff).
+ *
+ * Unlike csd's claude/codex/pi harnesses (persistent TUIs driven in tmux), agy
+ * exposes `-p/--print` (one-shot, blocks until the turn finishes) plus
+ * `--conversation <id>` (resume by id). So a worker here is NOT a long-lived
+ * pane: each turn is `agy -p <prompt> [--conversation <id>]`, which blocks until
+ * done and prints the reply. Turn-end detection is therefore free (process
+ * exit), with no tmux and no transcript polling for boundaries.
+ *
+ * agy's tool hooks (PreToolUse/PostToolUse) still fire during `-p`, so we wire a
+ * workspace `.agents/hooks.json` at launch pointing back at `agy-driver hook`,
+ * which appends normalized tool events to the worker's events log and replies
+ * `{"decision":"allow"}` (agy's PreToolUse fails closed without a reply).
+ *
+ * State per worker lives under $AGY_WORKER_DIR (default /tmp/agy-workers/<name>/):
+ *   meta.json       { name, cwd, conversationId?, transcriptPath? }
+ *   events.jsonl    normalized tool events from the hook
+ *   run.pid/out/err background `send` bookkeeping
+ */
+
+'use strict';
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawn, spawnSync } = require('node:child_process');
+
+const AGY_BIN = process.env.AGY_BIN || 'agy';
+const WORKERS_ROOT = process.env.AGY_WORKER_DIR || '/tmp/agy-workers';
+const BRAIN_ROOT = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'brain');
+const SCRIPT_PATH = __filename;
+
+// ---------- worker state ----------
+
+function workerDir(name) {
+  return path.join(WORKERS_ROOT, name);
+}
+function metaPath(name) {
+  return path.join(workerDir(name), 'meta.json');
+}
+function eventsPath(name) {
+  return path.join(workerDir(name), 'events.jsonl');
+}
+function readMeta(name) {
+  try {
+    return JSON.parse(fs.readFileSync(metaPath(name), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+function writeMeta(name, meta) {
+  fs.mkdirSync(workerDir(name), { recursive: true });
+  fs.writeFileSync(metaPath(name), `${JSON.stringify(meta, null, 2)}\n`);
+}
+function requireMeta(name) {
+  const meta = readMeta(name);
+  if (!meta) die(`no worker '${name}'. Launch it first: agy-driver launch ${name} <cwd>`);
+  return meta;
+}
+
+function die(msg) {
+  process.stderr.write(`agy-driver: ${msg}\n`);
+  process.exit(1);
+}
+
+// ---------- agy session plumbing ----------
+
+function transcriptPathFor(conversationId) {
+  return path.join(
+    BRAIN_ROOT,
+    conversationId,
+    '.system_generated',
+    'logs',
+    'transcript_full.jsonl',
+  );
+}
+
+/** UUID-ish brain dirs (agy conversation ids), for before/after diffing. */
+function brainDirs() {
+  try {
+    return fs
+      .readdirSync(BRAIN_ROOT)
+      .filter((d) => /^[0-9a-f-]{36}$/i.test(d));
+  } catch {
+    return [];
+  }
+}
+function newestNewBrainDir(before) {
+  const seen = new Set(before);
+  const fresh = brainDirs().filter((d) => !seen.has(d));
+  if (fresh.length === 0) return null;
+  return fresh
+    .map((d) => ({ d, t: statMtime(path.join(BRAIN_ROOT, d)) }))
+    .sort((a, b) => b.t - a.t)[0].d;
+}
+function statMtime(p) {
+  try {
+    return fs.statSync(p).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+/** The hooks.json csd-style command, baking the event name + worker dir. */
+function buildHooksJson(name) {
+  const events = ['PreToolUse', 'PostToolUse'];
+  const hooks = {};
+  for (const ev of events) {
+    const command = `node ${JSON.stringify(SCRIPT_PATH)} hook ${ev} ${JSON.stringify(name)}`;
+    hooks[ev] = [
+      { matcher: '.*', hooks: [{ type: 'command', command, async: false }] },
+    ];
+  }
+  return `${JSON.stringify({ hooks }, null, 2)}\n`;
+}
+
+// ---------- transcript -> markdown (ported parseAgyTurn) ----------
+
+function parseAgyTurn(jsonl) {
+  const lines = [];
+  for (const line of jsonl.split('\n')) {
+    if (!line) continue;
+    try {
+      const o = JSON.parse(line);
+      if (o && typeof o === 'object') lines.push(o);
+    } catch {
+      /* skip garbage */
+    }
+  }
+  if (lines.length === 0) return [];
+  let boundary = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].type === 'USER_INPUT') {
+      boundary = i;
+      break;
+    }
+  }
+  const turn = [];
+  for (const line of lines.slice(boundary)) {
+    if (line.type === 'USER_INPUT') {
+      turn.push({ kind: 'prompt', text: unwrapUserRequest(line.content) });
+    } else if (line.type === 'PLANNER_RESPONSE') {
+      if (Array.isArray(line.tool_calls)) {
+        for (const tc of line.tool_calls) {
+          if (tc && typeof tc === 'object') {
+            turn.push({
+              kind: 'tool_use',
+              name: String(tc.name || ''),
+              input: tc.args ?? tc.arguments ?? tc.input,
+            });
+          }
+        }
+      }
+      if (typeof line.content === 'string' && line.content.length > 0) {
+        turn.push({ kind: 'text', text: line.content });
+      }
+    } else if (line.type === 'CODE_ACTION') {
+      turn.push({
+        kind: 'tool_result',
+        content: typeof line.content === 'string' ? line.content : '',
+      });
+    }
+  }
+  return turn;
+}
+function unwrapUserRequest(content) {
+  if (typeof content !== 'string') return '';
+  const m = content.match(/<USER_REQUEST>\s*([\s\S]*?)\s*<\/USER_REQUEST>/);
+  return (m ? m[1] : content).trim();
+}
+function renderTurn(turn, full) {
+  const out = [];
+  for (const item of turn) {
+    if (item.kind === 'prompt') out.push(`---\n\n**Prompt:** ${item.text}`);
+    else if (item.kind === 'text') out.push(item.text);
+    else if (item.kind === 'tool_use')
+      out.push(`**Tool: ${item.name}**\n\`\`\`json\n${JSON.stringify(item.input)}\n\`\`\``);
+    else if (item.kind === 'tool_result') {
+      const body = full ? item.content : truncate(item.content);
+      out.push(`**Result:**\n\`\`\`\n${body}\n\`\`\``);
+    }
+  }
+  return out.join('\n\n');
+}
+function assistantText(turn) {
+  return turn.filter((i) => i.kind === 'text').map((i) => i.text).join('\n');
+}
+function truncate(s) {
+  const ls = s.split('\n');
+  return ls.length > 5 ? `${ls.slice(0, 5).join('\n')}\n... (${ls.length} lines)` : s;
+}
+
+// ---------- commands ----------
+
+function cmdLaunch(args) {
+  const [name, cwd] = args;
+  if (!name || !cwd) die('usage: agy-driver launch <name> <cwd>');
+  const abs = path.resolve(cwd);
+  if (!fs.existsSync(abs)) die(`cwd does not exist: ${abs}`);
+  writeMeta(name, { name, cwd: abs });
+  fs.writeFileSync(eventsPath(name), '');
+  // Wire workspace hooks for live tool-event capture.
+  const agentsDir = path.join(abs, '.agents');
+  fs.mkdirSync(agentsDir, { recursive: true });
+  fs.writeFileSync(path.join(agentsDir, 'hooks.json'), buildHooksJson(name));
+  process.stdout.write(`${workerDir(name)}\n`);
+  process.stderr.write(
+    `agy worker '${name}' ready (cwd ${abs}). Hooks at ${path.join(agentsDir, 'hooks.json')}.\n`,
+  );
+}
+
+/** Run one agy turn (blocking). Resolves the printed reply + conversationId. */
+function runTurn(meta, prompt, timeoutSec) {
+  const before = brainDirs();
+  const argv = ['-p', prompt, '--dangerously-skip-permissions'];
+  if (meta.conversationId) argv.push('--conversation', meta.conversationId);
+  if (timeoutSec) argv.push('--print-timeout', `${timeoutSec}s`);
+  const res = spawnSync(AGY_BIN, argv, {
+    cwd: meta.cwd,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: timeoutSec ? (timeoutSec + 30) * 1000 : undefined,
+  });
+  const reply = (res.stdout || '').trim();
+  // Learn/refresh the conversation id from the new brain dir (works even for
+  // no-tool turns where no hook fired).
+  let conversationId = meta.conversationId;
+  if (!conversationId) conversationId = newestNewBrainDir(before) || conversationId;
+  return { reply, conversationId, code: res.status, stderr: res.stderr || '' };
+}
+
+function cmdConverse(args) {
+  let full = false;
+  const rest = args.filter((a) => (a === '--with-turn' ? ((full = true), false) : true));
+  const [name, prompt, timeout] = rest;
+  if (!name || !prompt) die('usage: agy-driver converse [--with-turn] <name> <prompt> [timeout]');
+  const meta = requireMeta(name);
+  const { reply, conversationId, code, stderr } = runTurn(
+    meta,
+    prompt,
+    timeout ? Number(timeout) : 0,
+  );
+  if (conversationId && conversationId !== meta.conversationId) {
+    writeMeta(name, {
+      ...meta,
+      conversationId,
+      transcriptPath: transcriptPathFor(conversationId),
+    });
+  }
+  if (full && conversationId) {
+    process.stdout.write(`${readTurnMarkdown(conversationId, true)}\n`);
+  } else {
+    process.stdout.write(`${reply}\n`);
+  }
+  if (code !== 0 && reply.length === 0) {
+    process.stderr.write(`agy exited ${code}: ${stderr}\n`);
+    process.exit(code || 1);
+  }
+}
+
+function cmdSend(args) {
+  const [name, prompt] = args;
+  if (!name || !prompt) die('usage: agy-driver send <name> <prompt>');
+  const meta = requireMeta(name);
+  const argv = ['-p', prompt, '--dangerously-skip-permissions'];
+  if (meta.conversationId) argv.push('--conversation', meta.conversationId);
+  const out = fs.openSync(path.join(workerDir(name), 'run.out'), 'w');
+  const err = fs.openSync(path.join(workerDir(name), 'run.err'), 'w');
+  const child = spawn(AGY_BIN, argv, {
+    cwd: meta.cwd,
+    detached: true,
+    stdio: ['ignore', out, err],
+  });
+  fs.writeFileSync(
+    path.join(workerDir(name), 'run.pid'),
+    String(child.pid),
+  );
+  // Record the pre-launch brain set so wait-for-turn can resolve a new id.
+  fs.writeFileSync(
+    path.join(workerDir(name), 'run.before'),
+    brainDirs().join('\n'),
+  );
+  child.unref();
+  process.stderr.write(`sent (pid ${child.pid}). wait-for-turn ${name}.\n`);
+}
+
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function runPid(name) {
+  try {
+    return Number(fs.readFileSync(path.join(workerDir(name), 'run.pid'), 'utf8').trim());
+  } catch {
+    return 0;
+  }
+}
+
+function cmdWaitForTurn(args) {
+  const [name, timeout] = args;
+  if (!name) die('usage: agy-driver wait-for-turn <name> [timeout=300]');
+  requireMeta(name);
+  const pid = runPid(name);
+  if (!pid) die('no background send in flight; use converse, or send first');
+  const deadline = Date.now() + (Number(timeout) || 300) * 1000;
+  const poll = () => {
+    if (!pidAlive(pid)) return finishWait(name);
+    if (Date.now() > deadline) {
+      process.stderr.write('timeout waiting for turn\n');
+      process.exit(2);
+    }
+    setTimeout(poll, 500);
+  };
+  poll();
+}
+function finishWait(name) {
+  const meta = requireMeta(name);
+  if (!meta.conversationId) {
+    let before = [];
+    try {
+      before = fs
+        .readFileSync(path.join(workerDir(name), 'run.before'), 'utf8')
+        .split('\n')
+        .filter(Boolean);
+    } catch {
+      /* ignore */
+    }
+    const id = newestNewBrainDir(before);
+    if (id)
+      writeMeta(name, {
+        ...meta,
+        conversationId: id,
+        transcriptPath: transcriptPathFor(id),
+      });
+  }
+  const out = (() => {
+    try {
+      return fs.readFileSync(path.join(workerDir(name), 'run.out'), 'utf8').trim();
+    } catch {
+      return '';
+    }
+  })();
+  process.stdout.write(`${out}\n`);
+}
+
+function cmdStatus(args) {
+  const [name] = args;
+  if (!name) die('usage: agy-driver status <name>');
+  if (!readMeta(name)) {
+    process.stdout.write('gone\n');
+    return;
+  }
+  const pid = runPid(name);
+  process.stdout.write(pid && pidAlive(pid) ? 'working\n' : 'idle\n');
+}
+
+function readTurnMarkdown(conversationId, full) {
+  let jsonl = '';
+  try {
+    jsonl = fs.readFileSync(transcriptPathFor(conversationId), 'utf8');
+  } catch {
+    return '(no transcript yet)';
+  }
+  return renderTurn(parseAgyTurn(jsonl), full);
+}
+function cmdReadTurn(args) {
+  let full = false;
+  const rest = args.filter((a) => (a === '--full' ? ((full = true), false) : true));
+  const [name] = rest;
+  if (!name) die('usage: agy-driver read-turn <name> [--full]');
+  const meta = requireMeta(name);
+  if (!meta.conversationId) die('no turn yet for this worker');
+  process.stdout.write(`${readTurnMarkdown(meta.conversationId, full)}\n`);
+}
+
+function cmdReadEvents(args) {
+  const [name] = args;
+  if (!name) die('usage: agy-driver read-events <name>');
+  requireMeta(name);
+  try {
+    process.stdout.write(fs.readFileSync(eventsPath(name), 'utf8'));
+  } catch {
+    /* empty */
+  }
+}
+
+function cmdStop(args) {
+  const [name] = args;
+  if (!name) die('usage: agy-driver stop <name>');
+  const meta = readMeta(name);
+  const pid = runPid(name);
+  if (pid && pidAlive(pid)) {
+    try {
+      process.kill(pid);
+    } catch {
+      /* already gone */
+    }
+  }
+  // Best-effort: remove the workspace hooks we wrote.
+  if (meta?.cwd) {
+    try {
+      fs.rmSync(path.join(meta.cwd, '.agents', 'hooks.json'));
+    } catch {
+      /* ignore */
+    }
+  }
+  fs.rmSync(workerDir(name), { recursive: true, force: true });
+  process.stderr.write(`stopped '${name}'.\n`);
+}
+
+function cmdHandoff(args) {
+  const [name] = args;
+  if (!name) die('usage: agy-driver handoff <name>');
+  const meta = requireMeta(name);
+  if (!meta.conversationId) die('no conversation yet; converse once first');
+  process.stdout.write(
+    `Attach interactively from ${meta.cwd}:\n  agy --conversation ${meta.conversationId}\n`,
+  );
+}
+
+/** Internal: the command agy's hooks invoke. `hook <Event> <name>`, payload on stdin. */
+function cmdHook(args) {
+  const [eventName, name] = args;
+  let stdin = '';
+  try {
+    stdin = fs.readFileSync(0, 'utf8');
+  } catch {
+    /* no stdin */
+  }
+  // ALWAYS reply allow first — agy's PreToolUse fails closed without it.
+  process.stdout.write('{"decision":"allow"}\n');
+  try {
+    const p = JSON.parse(stdin);
+    const meta = readMeta(name);
+    if (!meta) return;
+    if (p.conversationId && !meta.conversationId) {
+      writeMeta(name, {
+        ...meta,
+        conversationId: p.conversationId,
+        transcriptPath: p.transcriptPath || transcriptPathFor(p.conversationId),
+      });
+    }
+    const ev = {
+      event: eventName === 'PostToolUse' ? 'post_tool_use' : 'pre_tool_use',
+      ts: new Date().toISOString(),
+      tool: p.toolCall && p.toolCall.name ? p.toolCall.name : '',
+    };
+    if (eventName === 'PreToolUse' && p.toolCall) ev.tool_input = p.toolCall.args;
+    fs.appendFileSync(eventsPath(name), `${JSON.stringify(ev)}\n`);
+  } catch {
+    /* never throw into agy */
+  }
+}
+
+// ---------- dispatch ----------
+
+const [cmd, ...rest] = process.argv.slice(2);
+const COMMANDS = {
+  launch: cmdLaunch,
+  converse: cmdConverse,
+  send: cmdSend,
+  'wait-for-turn': cmdWaitForTurn,
+  status: cmdStatus,
+  'read-turn': cmdReadTurn,
+  'read-events': cmdReadEvents,
+  stop: cmdStop,
+  handoff: cmdHandoff,
+  hook: cmdHook,
+};
+if (!cmd || cmd === 'help' || !COMMANDS[cmd]) {
+  process.stderr.write(
+    `agy-driver — drive Antigravity (agy) sessions as workers\n\n` +
+      `  launch <name> <cwd>                 set up a worker + workspace hooks\n` +
+      `  converse [--with-turn] <name> <p> [timeout]  send a prompt, block, print reply\n` +
+      `  send <name> <prompt>                send without waiting (background)\n` +
+      `  wait-for-turn <name> [timeout]      block until the background send finishes\n` +
+      `  status <name>                       idle | working | gone\n` +
+      `  read-turn <name> [--full]           render the last turn as markdown\n` +
+      `  read-events <name>                  the tool-event JSONL\n` +
+      `  stop <name>                         kill + clean up the worker\n` +
+      `  handoff <name>                      print the agy --conversation resume command\n`,
+  );
+  process.exit(cmd && cmd !== 'help' ? 1 : 0);
+}
+COMMANDS[cmd](rest);

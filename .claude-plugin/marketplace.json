@@ -31,6 +31,11 @@
       "name": "statusline",
       "source": "./plugins/statusline",
       "description": "Starship-style status line with context and rate-limit usage bars"
+    },
+    {
+      "name": "agy-driver",
+      "source": "./plugins/agy-driver",
+      "description": "Drive Google Antigravity (agy) coding sessions as workers"
     }
   ]
 }
