@@ -447,12 +447,17 @@ function cmdHook(args) {
         transcriptPath: p.transcriptPath || transcriptPathFor(p.conversationId),
       });
     }
+    // agy fires some PostToolUse with toolCall:null (internal step boundaries) —
+    // nothing to report, so skip rather than log an empty-tool event.
+    const tc = p.toolCall;
+    if (!tc || typeof tc !== 'object') return;
     const ev = {
       event: eventName === 'PostToolUse' ? 'post_tool_use' : 'pre_tool_use',
       ts: new Date().toISOString(),
-      tool: p.toolCall && p.toolCall.name ? p.toolCall.name : '',
+      tool: String(tc.name || ''),
     };
-    if (eventName === 'PreToolUse' && p.toolCall) ev.tool_input = p.toolCall.args;
+    if (eventName === 'PreToolUse') ev.tool_input = tc.args;
+    if (eventName === 'PostToolUse' && p.error) ev.error = p.error;
     fs.appendFileSync(eventsPath(name), `${JSON.stringify(ev)}\n`);
   } catch {
     /* never throw into agy */
