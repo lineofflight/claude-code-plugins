@@ -484,10 +484,18 @@ function cmdStop(args) {
   // Best-effort: remove the workspace hooks, but only if they're still ours —
   // another worker may have been launched in the same cwd after us.
   if (meta?.cwd) {
-    const hooksFile = path.join(meta.cwd, '.agents', 'hooks.json');
+    const agentsDir = path.join(meta.cwd, '.agents');
+    const hooksFile = path.join(agentsDir, 'hooks.json');
     try {
       if (fs.readFileSync(hooksFile, 'utf8') === buildHooksJson(name)) {
         fs.rmSync(hooksFile);
+        // Drop the .agents dir too if launch left it empty (rmdir refuses a
+        // non-empty dir, so this never clobbers other files there).
+        try {
+          fs.rmdirSync(agentsDir);
+        } catch {
+          /* not empty, or already gone */
+        }
       }
     } catch {
       /* not ours, or already gone */
