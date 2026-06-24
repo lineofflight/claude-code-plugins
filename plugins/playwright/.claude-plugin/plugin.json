@@ -1,7 +1,7 @@
 {
   "name": "playwright",
   "description": "Browser automation using Playwright",
-  "version": "0.1.5",
+  "version": "0.1.4",
   "author": {
     "name": "Line of Flight"
   },
