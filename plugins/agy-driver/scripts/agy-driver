@@ -1,0 +1,581 @@
+#!/usr/bin/env node
+/**
+ * agy-driver: drive Google Antigravity (`agy`) coding sessions as "workers",
+ * mirroring claude-session-driver's command vocabulary (launch / send / converse
+ * / wait-for-turn / status / read-turn / read-events / stop / handoff).
+ *
+ * Unlike csd's claude/codex/pi harnesses (persistent TUIs driven in tmux), agy
+ * exposes `-p/--print` (one-shot, blocks until the turn finishes) plus
+ * `--conversation <id>` (resume by id). So a worker here is NOT a long-lived
+ * pane: each turn is `agy -p <prompt> [--conversation <id>]`, which blocks until
+ * done and prints the reply. Turn-end detection is therefore free (process
+ * exit), with no tmux and no transcript polling for boundaries.
+ *
+ * agy's tool hooks (PreToolUse/PostToolUse) still fire during `-p`, so we wire a
+ * workspace `.agents/hooks.json` at launch pointing back at `agy-driver hook`,
+ * which appends normalized tool events to the worker's events log and replies
+ * `{"decision":"allow"}` (agy's PreToolUse fails closed without a reply).
+ *
+ * State per worker lives under $AGY_WORKER_DIR (default /tmp/agy-workers/<name>/):
+ *   meta.json       { name, cwd, conversationId?, transcriptPath? }
+ *   events.jsonl    normalized tool events from the hook
+ *   run.pid/out/err background `send` bookkeeping
+ */
+
+'use strict';
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawn, spawnSync } = require('node:child_process');
+
+const AGY_BIN = process.env.AGY_BIN || 'agy';
+const WORKERS_ROOT = process.env.AGY_WORKER_DIR || '/tmp/agy-workers';
+const BRAIN_ROOT = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'brain');
+const SCRIPT_PATH = __filename;
+
+// ---------- worker state ----------
+
+function workerDir(name) {
+  return path.join(WORKERS_ROOT, name);
+}
+function metaPath(name) {
+  return path.join(workerDir(name), 'meta.json');
+}
+function eventsPath(name) {
+  return path.join(workerDir(name), 'events.jsonl');
+}
+function readMeta(name) {
+  try {
+    return JSON.parse(fs.readFileSync(metaPath(name), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+function writeMeta(name, meta) {
+  fs.mkdirSync(workerDir(name), { recursive: true });
+  // Atomic write: a hook process and a driver command can touch meta.json at the
+  // same time, so write to a temp path then rename (atomic on the same fs) — a
+  // concurrent reader never sees a half-written file.
+  const tmp = `${metaPath(name)}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(meta, null, 2)}\n`);
+  fs.renameSync(tmp, metaPath(name));
+}
+function requireMeta(name) {
+  const meta = readMeta(name);
+  if (!meta) die(`no worker '${name}'. Launch it first: agy-driver launch ${name} <cwd>`);
+  return meta;
+}
+
+function die(msg) {
+  process.stderr.write(`agy-driver: ${msg}\n`);
+  process.exit(1);
+}
+
+/** Parse a CLI timeout in seconds. Missing -> default; non-numeric -> die. */
+function parseTimeout(s, def) {
+  if (s === undefined) return def;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < 0) {
+    die(`invalid timeout '${s}' (expected a number of seconds)`);
+  }
+  return n;
+}
+
+// ---------- agy session plumbing ----------
+
+function transcriptPathFor(conversationId) {
+  return path.join(
+    BRAIN_ROOT,
+    conversationId,
+    '.system_generated',
+    'logs',
+    'transcript_full.jsonl',
+  );
+}
+
+/** Per-worker agy log path; `--log-file` makes the conversation id discoverable. */
+function logPath(name) {
+  return path.join(workerDir(name), 'agy.log');
+}
+
+/**
+ * The conversation id agy logged for this worker's last turn. The log path is
+ * one we own, so its id is unambiguously ours — no shared-brain race, and it
+ * resolves even for no-tool turns (where no hook fires). agy logs lines like
+ * `Created conversation <id>` and `Print mode: conversation=<id>`; the last
+ * match is the current turn's id (covers first turn, resume, and fork).
+ */
+function idFromLog(name) {
+  let log = '';
+  try {
+    log = fs.readFileSync(logPath(name), 'utf8');
+  } catch {
+    return null;
+  }
+  const re = /conversation[ =]([0-9a-f-]{36})/gi;
+  let id = null;
+  let m;
+  while ((m = re.exec(log)) !== null) id = m[1];
+  return id;
+}
+
+/** The hooks.json csd-style command, baking the event name + worker dir. */
+function buildHooksJson(name) {
+  const events = ['PreToolUse', 'PostToolUse'];
+  const hooks = {};
+  for (const ev of events) {
+    const command = `node ${JSON.stringify(SCRIPT_PATH)} hook ${ev} ${JSON.stringify(name)}`;
+    hooks[ev] = [
+      { matcher: '.*', hooks: [{ type: 'command', command, async: false }] },
+    ];
+  }
+  return `${JSON.stringify({ hooks }, null, 2)}\n`;
+}
+
+// ---------- transcript -> markdown (ported parseAgyTurn) ----------
+
+function parseAgyTurn(jsonl) {
+  const lines = [];
+  for (const line of jsonl.split('\n')) {
+    if (!line) continue;
+    try {
+      const o = JSON.parse(line);
+      if (o && typeof o === 'object') lines.push(o);
+    } catch {
+      /* skip garbage */
+    }
+  }
+  if (lines.length === 0) return [];
+  let boundary = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].type === 'USER_INPUT') {
+      boundary = i;
+      break;
+    }
+  }
+  // No USER_INPUT in this slice => no turn to render (don't dump the whole log).
+  if (boundary === -1) return [];
+  const turn = [];
+  for (const line of lines.slice(boundary)) {
+    if (line.type === 'USER_INPUT') {
+      turn.push({ kind: 'prompt', text: unwrapUserRequest(line.content) });
+    } else if (line.type === 'PLANNER_RESPONSE') {
+      if (Array.isArray(line.tool_calls)) {
+        for (const tc of line.tool_calls) {
+          if (tc && typeof tc === 'object') {
+            turn.push({
+              kind: 'tool_use',
+              name: String(tc.name || ''),
+              input: tc.args ?? tc.arguments ?? tc.input,
+            });
+          }
+        }
+      }
+      if (typeof line.content === 'string' && line.content.length > 0) {
+        turn.push({ kind: 'text', text: line.content });
+      }
+    } else if (line.source === 'MODEL') {
+      // Any other MODEL-sourced record is a tool-execution result. agy names the
+      // record by the tool that ran (VIEW_FILE, RUN_COMMAND, LIST_DIRECTORY,
+      // GENERIC, …) — there is no single CODE_ACTION type. SYSTEM records
+      // (CONVERSATION_HISTORY, CHECKPOINT) fall through and are skipped.
+      turn.push({
+        kind: 'tool_result',
+        name: String(line.type || ''),
+        content: typeof line.content === 'string' ? line.content : '',
+      });
+    }
+  }
+  return turn;
+}
+function unwrapUserRequest(content) {
+  if (typeof content !== 'string') return '';
+  const m = content.match(/<USER_REQUEST>\s*([\s\S]*?)\s*<\/USER_REQUEST>/);
+  return (m ? m[1] : content).trim();
+}
+function renderTurn(turn, full) {
+  const out = [];
+  for (const item of turn) {
+    if (item.kind === 'prompt') out.push(`---\n\n**Prompt:** ${item.text}`);
+    else if (item.kind === 'text') out.push(item.text);
+    else if (item.kind === 'tool_use')
+      out.push(`**Tool: ${item.name}**\n\`\`\`json\n${JSON.stringify(item.input ?? null)}\n\`\`\``);
+    else if (item.kind === 'tool_result') {
+      const body = full ? item.content : truncate(item.content);
+      const label = item.name ? `Result (${item.name})` : 'Result';
+      out.push(`**${label}:**\n\`\`\`\n${body}\n\`\`\``);
+    }
+  }
+  return out.join('\n\n');
+}
+function truncate(s) {
+  const ls = s.split('\n');
+  return ls.length > 5 ? `${ls.slice(0, 5).join('\n')}\n... (${ls.length} lines)` : s;
+}
+
+// ---------- commands ----------
+
+function cmdLaunch(args) {
+  const [name, cwd] = args;
+  if (!name || !cwd) die('usage: agy-driver launch <name> <cwd>');
+  const abs = path.resolve(cwd);
+  if (!fs.existsSync(abs)) die(`cwd does not exist: ${abs}`);
+  // agy reads a single .agents/hooks.json per cwd, so two workers in one cwd
+  // would clobber each other's hooks (and stop would delete the survivor's).
+  // Refuse unless the existing file is already ours (relaunch is idempotent).
+  const agentsDir = path.join(abs, '.agents');
+  const hooksFile = path.join(agentsDir, 'hooks.json');
+  const desiredHooks = buildHooksJson(name);
+  if (fs.existsSync(hooksFile)) {
+    const existing = (() => {
+      try {
+        return fs.readFileSync(hooksFile, 'utf8');
+      } catch {
+        return '';
+      }
+    })();
+    if (existing && existing !== desiredHooks) {
+      die(
+        `.agents/hooks.json already exists in ${abs} (another worker or your own hooks). ` +
+          `agy allows one hooks file per cwd; launch this worker in a different cwd, or stop the other first.`,
+      );
+    }
+  }
+  writeMeta(name, { name, cwd: abs });
+  fs.writeFileSync(eventsPath(name), '');
+  // Wire workspace hooks for live tool-event capture.
+  fs.mkdirSync(agentsDir, { recursive: true });
+  fs.writeFileSync(hooksFile, desiredHooks);
+  process.stdout.write(`${workerDir(name)}\n`);
+  process.stderr.write(
+    `agy worker '${name}' ready (cwd ${abs}). Hooks at ${path.join(agentsDir, 'hooks.json')}.\n`,
+  );
+}
+
+/**
+ * agy argv for one turn — shared by the sync runTurn and background send.
+ * `--log-file` points at our per-worker log so we can recover the conversation
+ * id from a file we own (race-free), instead of diffing the shared brain dir.
+ */
+function buildAgyArgv(name, meta, prompt) {
+  const argv = ['-p', prompt, '--dangerously-skip-permissions', '--log-file', logPath(name)];
+  if (meta.conversationId) argv.push('--conversation', meta.conversationId);
+  return argv;
+}
+
+/** Run one agy turn (blocking). Resolves the printed reply + conversationId. */
+function runTurn(name, meta, prompt, timeoutSec) {
+  const argv = buildAgyArgv(name, meta, prompt);
+  if (timeoutSec) argv.push('--print-timeout', `${timeoutSec}s`);
+  // Fresh log per turn so idFromLog reads only this turn's id.
+  fs.writeFileSync(logPath(name), '');
+  const res = spawnSync(AGY_BIN, argv, {
+    cwd: meta.cwd,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: timeoutSec ? (timeoutSec + 30) * 1000 : undefined,
+  });
+  const reply = (res.stdout || '').trim();
+  // The log we just wrote is unambiguously ours, so its id is authoritative for
+  // the first turn, a resume, and a fork alike. Fall back to the known id if the
+  // turn died before agy created/logged the conversation.
+  const conversationId = idFromLog(name) || meta.conversationId;
+  return {
+    reply,
+    conversationId,
+    code: res.status,
+    signal: res.signal || null,
+    stderr: res.stderr || '',
+    truncated: !!(res.error && res.error.code === 'ENOBUFS'),
+  };
+}
+
+function cmdConverse(args) {
+  let full = false;
+  const rest = args.filter((a) => (a === '--with-turn' ? ((full = true), false) : true));
+  const [name, prompt, timeout] = rest;
+  if (!name || !prompt) die('usage: agy-driver converse [--with-turn] <name> <prompt> [timeout]');
+  const meta = requireMeta(name);
+  const { reply, conversationId: discovered, code, signal, stderr, truncated } = runTurn(
+    name,
+    meta,
+    prompt,
+    parseTimeout(timeout, 0),
+  );
+  // The log id is authoritative (a path we own); fall back to whatever the hook
+  // may have persisted mid-turn.
+  const latest = readMeta(name) || meta;
+  const conversationId = discovered || latest.conversationId;
+  if (conversationId && conversationId !== meta.conversationId) {
+    writeMeta(name, {
+      ...latest,
+      conversationId,
+      transcriptPath: transcriptPathFor(conversationId),
+    });
+  }
+  if (full && conversationId) {
+    process.stdout.write(`${readTurnMarkdown(conversationId, true)}\n`);
+  } else {
+    process.stdout.write(`${reply}\n`);
+  }
+  if (truncated) {
+    process.stderr.write('agy: output exceeded the 64MB buffer and was truncated\n');
+  }
+  if (signal) {
+    // SIGTERM here is almost always the print-timeout firing. The reply (if any)
+    // is incomplete, so fail loudly rather than report a clean turn.
+    process.stderr.write(`agy killed by ${signal} (timed out?); reply may be incomplete\n`);
+    process.exit(1);
+  }
+  if (code !== 0 && reply.length === 0) {
+    process.stderr.write(`agy exited ${code}: ${stderr}\n`);
+    process.exit(code || 1);
+  }
+}
+
+function cmdSend(args) {
+  const [name, prompt] = args;
+  if (!name || !prompt) die('usage: agy-driver send <name> <prompt>');
+  const meta = requireMeta(name);
+  const argv = buildAgyArgv(name, meta, prompt);
+  // Fresh log per turn; --log-file in argv lets wait-for-turn recover the id.
+  fs.writeFileSync(logPath(name), '');
+  const out = fs.openSync(path.join(workerDir(name), 'run.out'), 'w');
+  const err = fs.openSync(path.join(workerDir(name), 'run.err'), 'w');
+  const child = spawn(AGY_BIN, argv, {
+    cwd: meta.cwd,
+    detached: true,
+    stdio: ['ignore', out, err],
+  });
+  // A failed spawn (e.g. agy not on PATH) emits an async 'error' event; without
+  // a listener that crashes the process. Record it so wait-for-turn surfaces it.
+  child.on('error', (e) => {
+    try {
+      fs.appendFileSync(path.join(workerDir(name), 'run.err'), `${e}\n`);
+    } catch {
+      /* ignore */
+    }
+  });
+  fs.writeFileSync(path.join(workerDir(name), 'run.pid'), String(child.pid));
+  child.unref();
+  process.stderr.write(`sent (pid ${child.pid}). wait-for-turn ${name}.\n`);
+}
+
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function runPid(name) {
+  try {
+    return Number(fs.readFileSync(path.join(workerDir(name), 'run.pid'), 'utf8').trim());
+  } catch {
+    return 0;
+  }
+}
+
+function cmdWaitForTurn(args) {
+  const [name, timeout] = args;
+  if (!name) die('usage: agy-driver wait-for-turn <name> [timeout=300]');
+  requireMeta(name);
+  const pid = runPid(name);
+  if (!pid) die('no background send in flight; use converse, or send first');
+  const deadline = Date.now() + parseTimeout(timeout, 300) * 1000;
+  const poll = () => {
+    if (!pidAlive(pid)) return finishWait(name);
+    if (Date.now() > deadline) {
+      process.stderr.write('timeout waiting for turn\n');
+      process.exit(2);
+    }
+    setTimeout(poll, 500);
+  };
+  poll();
+}
+function finishWait(name) {
+  const meta = requireMeta(name);
+  // Recover the conversation id from the log we wrote (race-free, ours).
+  const id = idFromLog(name);
+  if (id && id !== meta.conversationId) {
+    writeMeta(name, {
+      ...meta,
+      conversationId: id,
+      transcriptPath: transcriptPathFor(id),
+    });
+  }
+  const readRun = (f) => {
+    try {
+      return fs.readFileSync(path.join(workerDir(name), f), 'utf8').trim();
+    } catch {
+      return '';
+    }
+  };
+  const out = readRun('run.out');
+  const err = readRun('run.err');
+  // The background send is finished; clear run.pid so a reused PID can't read as
+  // a live turn (status) and a later wait-for-turn can't return stale output.
+  try {
+    fs.rmSync(path.join(workerDir(name), 'run.pid'));
+  } catch {
+    /* ignore */
+  }
+  process.stdout.write(`${out}\n`);
+  if (out.length === 0 && err.length > 0) {
+    process.stderr.write(`agy send failed: ${err}\n`);
+    process.exit(1);
+  }
+}
+
+function cmdStatus(args) {
+  const [name] = args;
+  if (!name) die('usage: agy-driver status <name>');
+  if (!readMeta(name)) {
+    process.stdout.write('gone\n');
+    return;
+  }
+  const pid = runPid(name);
+  process.stdout.write(pid && pidAlive(pid) ? 'working\n' : 'idle\n');
+}
+
+function readTurnMarkdown(conversationId, full) {
+  let jsonl = '';
+  try {
+    jsonl = fs.readFileSync(transcriptPathFor(conversationId), 'utf8');
+  } catch {
+    return '(no transcript yet)';
+  }
+  return renderTurn(parseAgyTurn(jsonl), full);
+}
+function cmdReadTurn(args) {
+  let full = false;
+  const rest = args.filter((a) => (a === '--full' ? ((full = true), false) : true));
+  const [name] = rest;
+  if (!name) die('usage: agy-driver read-turn <name> [--full]');
+  const meta = requireMeta(name);
+  if (!meta.conversationId) die('no turn yet for this worker');
+  process.stdout.write(`${readTurnMarkdown(meta.conversationId, full)}\n`);
+}
+
+function cmdReadEvents(args) {
+  const [name] = args;
+  if (!name) die('usage: agy-driver read-events <name>');
+  requireMeta(name);
+  try {
+    process.stdout.write(fs.readFileSync(eventsPath(name), 'utf8'));
+  } catch {
+    /* empty */
+  }
+}
+
+function cmdStop(args) {
+  const [name] = args;
+  if (!name) die('usage: agy-driver stop <name>');
+  const meta = readMeta(name);
+  const pid = runPid(name);
+  if (pid && pidAlive(pid)) {
+    try {
+      process.kill(pid);
+    } catch {
+      /* already gone */
+    }
+  }
+  // Best-effort: remove the workspace hooks, but only if they're still ours —
+  // another worker may have been launched in the same cwd after us.
+  if (meta?.cwd) {
+    const hooksFile = path.join(meta.cwd, '.agents', 'hooks.json');
+    try {
+      if (fs.readFileSync(hooksFile, 'utf8') === buildHooksJson(name)) {
+        fs.rmSync(hooksFile);
+      }
+    } catch {
+      /* not ours, or already gone */
+    }
+  }
+  fs.rmSync(workerDir(name), { recursive: true, force: true });
+  process.stderr.write(`stopped '${name}'.\n`);
+}
+
+function cmdHandoff(args) {
+  const [name] = args;
+  if (!name) die('usage: agy-driver handoff <name>');
+  const meta = requireMeta(name);
+  if (!meta.conversationId) die('no conversation yet; converse once first');
+  process.stdout.write(
+    `Attach interactively from ${meta.cwd}:\n  agy --conversation ${meta.conversationId}\n`,
+  );
+}
+
+/** Internal: the command agy's hooks invoke. `hook <Event> <name>`, payload on stdin. */
+function cmdHook(args) {
+  const [eventName, name] = args;
+  let stdin = '';
+  try {
+    stdin = fs.readFileSync(0, 'utf8');
+  } catch {
+    /* no stdin */
+  }
+  // ALWAYS reply allow first — agy's PreToolUse fails closed without it.
+  process.stdout.write('{"decision":"allow"}\n');
+  try {
+    const p = JSON.parse(stdin);
+    const meta = readMeta(name);
+    if (!meta) return;
+    // Adopt the id whenever it changes (first turn, or a turn that forked a new
+    // conversation) — the hook payload is the authoritative source for it.
+    if (p.conversationId && p.conversationId !== meta.conversationId) {
+      writeMeta(name, {
+        ...meta,
+        conversationId: p.conversationId,
+        transcriptPath: p.transcriptPath || transcriptPathFor(p.conversationId),
+      });
+    }
+    // agy fires some PostToolUse with toolCall:null (internal step boundaries) —
+    // nothing to report, so skip rather than log an empty-tool event.
+    const tc = p.toolCall;
+    if (!tc || typeof tc !== 'object') return;
+    const ev = {
+      event: eventName === 'PostToolUse' ? 'post_tool_use' : 'pre_tool_use',
+      ts: new Date().toISOString(),
+      tool: String(tc.name || ''),
+    };
+    if (eventName === 'PreToolUse') ev.tool_input = tc.args;
+    if (eventName === 'PostToolUse' && p.error) ev.error = p.error;
+    fs.appendFileSync(eventsPath(name), `${JSON.stringify(ev)}\n`);
+  } catch {
+    /* never throw into agy */
+  }
+}
+
+// ---------- dispatch ----------
+
+const [cmd, ...rest] = process.argv.slice(2);
+const COMMANDS = {
+  launch: cmdLaunch,
+  converse: cmdConverse,
+  send: cmdSend,
+  'wait-for-turn': cmdWaitForTurn,
+  status: cmdStatus,
+  'read-turn': cmdReadTurn,
+  'read-events': cmdReadEvents,
+  stop: cmdStop,
+  handoff: cmdHandoff,
+  hook: cmdHook,
+};
+if (!cmd || cmd === 'help' || !COMMANDS[cmd]) {
+  process.stderr.write(
+    `agy-driver — drive Antigravity (agy) sessions as workers\n\n` +
+      `  launch <name> <cwd>                 set up a worker + workspace hooks\n` +
+      `  converse [--with-turn] <name> <p> [timeout]  send a prompt, block, print reply\n` +
+      `  send <name> <prompt>                send without waiting (background)\n` +
+      `  wait-for-turn <name> [timeout]      block until the background send finishes\n` +
+      `  status <name>                       idle | working | gone\n` +
+      `  read-turn <name> [--full]           render the last turn as markdown\n` +
+      `  read-events <name>                  the tool-event JSONL\n` +
+      `  stop <name>                         kill + clean up the worker\n` +
+      `  handoff <name>                      print the agy --conversation resume command\n`,
+  );
+  process.exit(cmd && cmd !== 'help' ? 1 : 0);
+}
+COMMANDS[cmd](rest);

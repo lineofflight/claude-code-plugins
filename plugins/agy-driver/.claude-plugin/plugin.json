@@ -1,0 +1,9 @@
+{
+  "name": "agy-driver",
+  "description": "Drive Google Antigravity (agy) coding sessions as workers",
+  "version": "0.1.3",
+  "author": {
+    "name": "Line of Flight"
+  },
+  "repository": "https://github.com/lineofflight/claude-code-plugins"
+}
