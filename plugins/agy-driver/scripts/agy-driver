@@ -93,30 +93,30 @@ function transcriptPathFor(conversationId) {
   );
 }
 
-/** UUID-ish brain dirs (agy conversation ids), for before/after diffing. */
-function brainDirs() {
-  try {
-    return fs
-      .readdirSync(BRAIN_ROOT)
-      .filter((d) => /^[0-9a-f-]{36}$/i.test(d));
-  } catch {
-    return [];
-  }
+/** Per-worker agy log path; `--log-file` makes the conversation id discoverable. */
+function logPath(name) {
+  return path.join(workerDir(name), 'agy.log');
 }
-function newestNewBrainDir(before) {
-  const seen = new Set(before);
-  const fresh = brainDirs().filter((d) => !seen.has(d));
-  if (fresh.length === 0) return null;
-  return fresh
-    .map((d) => ({ d, t: statMtime(path.join(BRAIN_ROOT, d)) }))
-    .sort((a, b) => b.t - a.t)[0].d;
-}
-function statMtime(p) {
+
+/**
+ * The conversation id agy logged for this worker's last turn. The log path is
+ * one we own, so its id is unambiguously ours — no shared-brain race, and it
+ * resolves even for no-tool turns (where no hook fires). agy logs lines like
+ * `Created conversation <id>` and `Print mode: conversation=<id>`; the last
+ * match is the current turn's id (covers first turn, resume, and fork).
+ */
+function idFromLog(name) {
+  let log = '';
   try {
-    return fs.statSync(p).mtimeMs;
+    log = fs.readFileSync(logPath(name), 'utf8');
   } catch {
-    return 0;
+    return null;
   }
+  const re = /conversation[ =]([0-9a-f-]{36})/gi;
+  let id = null;
+  let m;
+  while ((m = re.exec(log)) !== null) id = m[1];
+  return id;
 }
 
 /** The hooks.json csd-style command, baking the event name + worker dir. */
@@ -252,18 +252,23 @@ function cmdLaunch(args) {
   );
 }
 
-/** Base agy argv for one turn — shared by the sync runTurn and background send. */
-function buildAgyArgv(meta, prompt) {
-  const argv = ['-p', prompt, '--dangerously-skip-permissions'];
+/**
+ * agy argv for one turn — shared by the sync runTurn and background send.
+ * `--log-file` points at our per-worker log so we can recover the conversation
+ * id from a file we own (race-free), instead of diffing the shared brain dir.
+ */
+function buildAgyArgv(name, meta, prompt) {
+  const argv = ['-p', prompt, '--dangerously-skip-permissions', '--log-file', logPath(name)];
   if (meta.conversationId) argv.push('--conversation', meta.conversationId);
   return argv;
 }
 
 /** Run one agy turn (blocking). Resolves the printed reply + conversationId. */
-function runTurn(meta, prompt, timeoutSec) {
-  const before = brainDirs();
-  const argv = buildAgyArgv(meta, prompt);
+function runTurn(name, meta, prompt, timeoutSec) {
+  const argv = buildAgyArgv(name, meta, prompt);
   if (timeoutSec) argv.push('--print-timeout', `${timeoutSec}s`);
+  // Fresh log per turn so idFromLog reads only this turn's id.
+  fs.writeFileSync(logPath(name), '');
   const res = spawnSync(AGY_BIN, argv, {
     cwd: meta.cwd,
     encoding: 'utf8',
@@ -271,12 +276,10 @@ function runTurn(meta, prompt, timeoutSec) {
     timeout: timeoutSec ? (timeoutSec + 30) * 1000 : undefined,
   });
   const reply = (res.stdout || '').trim();
-  // Learn the conversation id on the first turn from the new brain dir (works
-  // even for no-tool turns where no hook fired). Resumes reuse the dir, and the
-  // hook refreshes the id if a turn ever forks a new conversation — so we leave
-  // a known id alone here to stay immune to other sessions' concurrent dirs.
-  let conversationId = meta.conversationId;
-  if (!conversationId) conversationId = newestNewBrainDir(before) || conversationId;
+  // The log we just wrote is unambiguously ours, so its id is authoritative for
+  // the first turn, a resume, and a fork alike. Fall back to the known id if the
+  // turn died before agy created/logged the conversation.
+  const conversationId = idFromLog(name) || meta.conversationId;
   return {
     reply,
     conversationId,
@@ -294,13 +297,15 @@ function cmdConverse(args) {
   if (!name || !prompt) die('usage: agy-driver converse [--with-turn] <name> <prompt> [timeout]');
   const meta = requireMeta(name);
   const { reply, conversationId: discovered, code, signal, stderr, truncated } = runTurn(
+    name,
     meta,
     prompt,
     parseTimeout(timeout, 0),
   );
-  // The hook may have learned/refreshed the id mid-turn; prefer the persisted one.
+  // The log id is authoritative (a path we own); fall back to whatever the hook
+  // may have persisted mid-turn.
   const latest = readMeta(name) || meta;
-  const conversationId = latest.conversationId || discovered;
+  const conversationId = discovered || latest.conversationId;
   if (conversationId && conversationId !== meta.conversationId) {
     writeMeta(name, {
       ...latest,
@@ -332,13 +337,9 @@ function cmdSend(args) {
   const [name, prompt] = args;
   if (!name || !prompt) die('usage: agy-driver send <name> <prompt>');
   const meta = requireMeta(name);
-  const argv = buildAgyArgv(meta, prompt);
-  // Snapshot the brain set BEFORE spawning, so a fast-starting child can't add
-  // its own dir to the "already seen" set and hide the new conversation id.
-  fs.writeFileSync(
-    path.join(workerDir(name), 'run.before'),
-    brainDirs().join('\n'),
-  );
+  const argv = buildAgyArgv(name, meta, prompt);
+  // Fresh log per turn; --log-file in argv lets wait-for-turn recover the id.
+  fs.writeFileSync(logPath(name), '');
   const out = fs.openSync(path.join(workerDir(name), 'run.out'), 'w');
   const err = fs.openSync(path.join(workerDir(name), 'run.err'), 'w');
   const child = spawn(AGY_BIN, argv, {
@@ -395,23 +396,14 @@ function cmdWaitForTurn(args) {
 }
 function finishWait(name) {
   const meta = requireMeta(name);
-  if (!meta.conversationId) {
-    let before = [];
-    try {
-      before = fs
-        .readFileSync(path.join(workerDir(name), 'run.before'), 'utf8')
-        .split('\n')
-        .filter(Boolean);
-    } catch {
-      /* ignore */
-    }
-    const id = newestNewBrainDir(before);
-    if (id)
-      writeMeta(name, {
-        ...meta,
-        conversationId: id,
-        transcriptPath: transcriptPathFor(id),
-      });
+  // Recover the conversation id from the log we wrote (race-free, ours).
+  const id = idFromLog(name);
+  if (id && id !== meta.conversationId) {
+    writeMeta(name, {
+      ...meta,
+      conversationId: id,
+      transcriptPath: transcriptPathFor(id),
+    });
   }
   const readRun = (f) => {
     try {
@@ -422,15 +414,12 @@ function finishWait(name) {
   };
   const out = readRun('run.out');
   const err = readRun('run.err');
-  // The background send is finished; clear its bookkeeping so a reused PID can't
-  // read as a live turn (status) and a later wait-for-turn can't return stale
-  // output. run.before was already consumed above.
-  for (const f of ['run.pid', 'run.before']) {
-    try {
-      fs.rmSync(path.join(workerDir(name), f));
-    } catch {
-      /* ignore */
-    }
+  // The background send is finished; clear run.pid so a reused PID can't read as
+  // a live turn (status) and a later wait-for-turn can't return stale output.
+  try {
+    fs.rmSync(path.join(workerDir(name), 'run.pid'));
+  } catch {
+    /* ignore */
   }
   process.stdout.write(`${out}\n`);
   if (out.length === 0 && err.length > 0) {

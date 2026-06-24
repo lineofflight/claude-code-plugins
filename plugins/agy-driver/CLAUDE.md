@@ -9,12 +9,14 @@ agy can be driven far more simply than csd's tmux harnesses.
   the reply) and `--conversation <id>` (resume). So each turn is
   `agy -p <prompt> [--conversation <id>]`. No tmux, no pane lifecycle, turn-end =
   process exit. This is why the driver is ~1 file of plain Node.
-- **conversationId discovery.** agy mints its own id. We learn it by diffing
-  `~/.gemini/antigravity-cli/brain/` before/after the first turn (robust even for
-  no-tool turns), and from the tool hook's payload. The brain-dir diff only runs
-  when no id is known yet, so a resume can't be hijacked by another session's
-  concurrent dir; the hook is the authoritative refresh if a turn forks a new
-  conversation.
+- **conversationId discovery.** agy mints its own id and doesn't print it, so we
+  pass `--log-file <worker>/agy.log` and parse the id agy logs there
+  (`Created conversation <id>` / `Print mode: conversation=<id>`, last match
+  wins). The log path is one we own, so its id is unambiguously this turn's —
+  race-free even under a concurrent GUI/worker sharing `~/.gemini`, and it
+  resolves no-tool turns too (where no hook fires). Earlier builds diffed the
+  shared `brain/` dir, which could mis-attribute under concurrency; the log
+  replaces that. The hook still adopts the id opportunistically as a backstop.
 - **Hooks are for live tool events only**, not turn boundaries. agy's CLI fires
   only `PreToolUse`/`PostToolUse` (verified — no SessionStart/Stop/SessionEnd).
   The hook command (`agy-driver hook <Event> <name>`) appends a normalized event
@@ -29,8 +31,10 @@ agy can be driven far more simply than csd's tmux harnesses.
 
 ## Known gaps / TODO
 
-- Per-worker auth/home: uses the operator's real `~/.gemini`. No isolation, so
-  concurrent workers share Gemini auth/session store. Fine for serial use.
+- Per-worker auth/home: uses the operator's real `~/.gemini`, so concurrent
+  workers share Gemini auth/session store. Conversation-id discovery is no longer
+  affected (it parses our own `--log-file`), but other shared state still favors
+  serial use.
 - One worker per cwd: agy reads a single `.agents/hooks.json` per directory, so
   `launch` refuses a cwd that already holds a different worker's hooks, and
   `stop` only removes the file if it's still ours.
