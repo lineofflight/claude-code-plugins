@@ -1,7 +1,7 @@
 {
   "name": "agy-driver",
   "description": "Drive Google Antigravity (agy) coding sessions as workers",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": {
     "name": "Line of Flight"
   },

@@ -93,6 +93,11 @@ disk**, not agy's prose self-report.
 
 - **Auth** comes from the operator's real `~/.gemini` (the agy/Gemini login). No
   per-worker auth staging yet.
+- **Env vars.** `AGY_BIN` overrides the `agy` binary (default `agy`);
+  `AGY_WORKER_DIR` overrides the worker-state root (default `/tmp/agy-workers`).
+- **One worker per cwd.** agy reads a single `.agents/hooks.json` per directory,
+  so `launch` refuses a cwd that already has a different worker's hooks. Give
+  each concurrent worker its own cwd.
 - **One controller per worker.** Concurrent `send`s to the same worker collide.
 - **Workspace hooks** are written into the project's `.agents/hooks.json`;
   `stop` removes the file. Add `.agents/` to the project's gitignore if needed.

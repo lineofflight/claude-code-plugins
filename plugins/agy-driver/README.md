@@ -17,6 +17,9 @@ harness to csd, and it has zero coupling to csd's release cycle.
 - `agy` on PATH (the Antigravity CLI), authenticated via your `~/.gemini` login
 - `node` on PATH
 
+Two env vars tune it: `AGY_BIN` overrides the `agy` binary (default `agy`), and
+`AGY_WORKER_DIR` overrides where worker state lives (default `/tmp/agy-workers`).
+
 ## Usage
 
 ```
