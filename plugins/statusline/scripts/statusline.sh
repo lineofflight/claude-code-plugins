@@ -55,23 +55,16 @@ fi
 # a cheaper model shows just the model, lower effort shows just the effort, both
 # show both. Rendered after the context bar (see usage_display).
 # Hide at/above baseline: model >= opus (opus/fable/mythos); effort >= xhigh (xhigh/max).
-# Extract version (e.g. 3.5, 1.5, 3) and tier (e.g. flash, pro, sonnet, haiku, opus, fable, mythos)
-version=$(echo "$model_name" | grep -oE '[0-9]+(\.[0-9]+)?' | head -n 1)
-tier=$(echo "$model_name" | grep -oEi 'flash|pro|sonnet|haiku|opus|fable|mythos' | tr '[:upper:]' '[:lower:]' | head -n 1)
+# Extract tier (e.g. flash, pro, sonnet, haiku, opus, fable, mythos)
+model_full=$(echo "$model_name" | grep -oEi 'flash|pro|sonnet|haiku|opus|fable|mythos' | tr '[:upper:]' '[:lower:]' | head -n 1)
 
-if [ -n "$tier" ] && [ -n "$version" ]; then
-    model_full="${tier} ${version}"
-elif [ -n "$tier" ]; then
-    model_full="$tier"
-elif [ -n "$version" ]; then
-    model_full="$version"
-else
+if [ -z "$model_full" ]; then
     # Fallback to the first lowercase word
     model_full=$(echo "$model_name" | sed -E 's/(Claude|Gemini) //i' | awk '{print tolower($1)}')
 fi
 effort=$(echo "$input" | jq -r '.effort.level // empty')  # low | medium | high | xhigh | max
 
-case "$model_full" in *opus*|*fable*|*mythos*) model_seg="" ;; *) model_seg="  $model_full" ;; esac
+case "$model_full" in opus|fable|mythos) model_seg="" ;; *) model_seg="  $model_full" ;; esac
 case "$effort" in xhigh|max|"") effort_seg="" ;; *) effort_seg="  $effort" ;; esac
 
 # Format a labeled percentage with color thresholds (defaults: green <50, yellow <75, red >=75).
