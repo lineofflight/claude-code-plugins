@@ -55,7 +55,18 @@ fi
 # a cheaper model shows just the model, lower effort shows just the effort, both
 # show both. Rendered after the context bar (see usage_display).
 # Hide at/above baseline: model >= opus (opus/fable/mythos); effort >= xhigh (xhigh/max).
-model_full=$(echo "$model_name" | sed 's/Claude //i' | awk '{print tolower($1)}')
+if [[ "$model_name" =~ [Gg]emini ]]; then
+    # Extract version (e.g., 3.5) and tier (e.g., Flash, Pro)
+    version=$(echo "$model_name" | grep -oE '[0-9]+\.[0-9]+')
+    tier=$(echo "$model_name" | grep -oEi 'flash|pro' | tr '[:upper:]' '[:lower:]')
+    if [ -n "$tier" ] && [ -n "$version" ]; then
+        model_full="${tier} ${version}"
+    else
+        model_full=$(echo "$model_name" | sed 's/Gemini //i' | awk '{print tolower($1)}')
+    fi
+else
+    model_full=$(echo "$model_name" | sed 's/Claude //i' | awk '{print tolower($1)}')
+fi
 effort=$(echo "$input" | jq -r '.effort.level // empty')  # low | medium | high | xhigh | max
 
 case "$model_full" in opus|fable|mythos) model_seg="" ;; *) model_seg="  $model_full" ;; esac
