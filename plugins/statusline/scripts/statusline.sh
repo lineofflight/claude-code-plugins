@@ -64,7 +64,7 @@ if [ -z "$model_full" ]; then
 fi
 effort=$(echo "$input" | jq -r '.effort.level // empty')  # low | medium | high | xhigh | max
 
-case "$model_full" in opus|fable|mythos) model_seg="" ;; *) model_seg="  $model_full" ;; esac
+model_seg="  $model_full"
 case "$effort" in xhigh|max|"") effort_seg="" ;; *) effort_seg="  $effort" ;; esac
 
 # Format a labeled percentage with color thresholds (defaults: green <50, yellow <75, red >=75).
