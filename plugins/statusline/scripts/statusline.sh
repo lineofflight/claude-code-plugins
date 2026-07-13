@@ -98,7 +98,7 @@ draw_bar() {
     bar="$bar$dim"
     for ((i = filled; i < width; i++)); do bar="$bar$bar_empty"; done
     local lbl=""; [ -n "$label" ] && lbl="$label "
-    printf '  %s%s%s' "$lbl" "$bar" "$reset"
+    printf ' %s%s%s' "$lbl" "$bar" "$reset"
 }
 
 # 7d uses a time-aware hide threshold: hide unless usage is ahead of a linear pace line.
