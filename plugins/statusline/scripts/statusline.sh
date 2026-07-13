@@ -98,7 +98,7 @@ draw_bar() {
     bar="$bar$dim"
     for ((i = filled; i < width; i++)); do bar="$bar$bar_empty"; done
     local lbl=""; [ -n "$label" ] && lbl="$label "
-    printf ' %s%s%s' "$lbl" "$bar" "$reset"
+    printf '%s%s%s' "$lbl" "$bar" "$reset"
 }
 
 # 7d uses a time-aware hide threshold: hide unless usage is ahead of a linear pace line.
@@ -115,6 +115,6 @@ if [ -n "$seven_d_reset" ]; then
     }')
 fi
 
-usage_display="$(draw_bar "$used_pct" "" 10)${model_seg}${effort_seg}$(fmt_pct "$five_h_pct" "5h" 50 75 50)$(fmt_pct "$seven_d_pct" "7d" 50 75 "$seven_d_min")"
+usage_display="  $(draw_bar "$used_pct" "" 10)${model_seg}${effort_seg}$(fmt_pct "$five_h_pct" "5h" 50 75 50)$(fmt_pct "$seven_d_pct" "7d" 50 75 "$seven_d_min")"
 
 printf "%s%s%b\n" "${cyan}${display_name}${reset}" "$git_info" "$usage_display"
