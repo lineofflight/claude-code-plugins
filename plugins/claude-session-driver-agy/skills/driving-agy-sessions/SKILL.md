@@ -24,12 +24,12 @@ only sandboxed/trusted tasks.
 
 ## The CLI
 
-`scripts/agy-driver` is a self-contained Node CLI (`agy` and `node` on PATH; no
+`scripts/claude-session-driver-agy` is a self-contained Node CLI (`agy` and `node` on PATH; no
 build). All state lives under `/tmp/agy-workers/<name>/` (override with
 `AGY_WORKER_DIR`). Reference the script by its plugin path.
 
 ```
-SD="${CLAUDE_PLUGIN_ROOT}/scripts/agy-driver"
+SD="${CLAUDE_PLUGIN_ROOT}/scripts/claude-session-driver-agy"
 ```
 
 ### Launch

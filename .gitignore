@@ -1,4 +1,4 @@
 .claude/rem/patterns/
 
-# agy-driver writes a workspace hooks file when driving agy in this repo
+# claude-session-driver-agy writes a workspace hooks file when driving agy in this repo
 .agents/

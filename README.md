@@ -11,7 +11,7 @@ A collection of Claude Code plugins.
 | [git](plugins/git) | Git and GitHub conventions and workflows |
 | [demo-gif](plugins/demo-gif) | Record a clean terminal/REPL demo as an animated GIF with vhs |
 | [statusline](plugins/statusline) | Starship-style status line with context and rate-limit usage bars |
-| [agy-driver](plugins/agy-driver) | Drive Google Antigravity (agy) coding sessions as workers |
+| [claude-session-driver-agy](plugins/claude-session-driver-agy) | Drive Google Antigravity (agy) coding sessions as workers |
 
 ## Recommended Third-Party Plugins
 

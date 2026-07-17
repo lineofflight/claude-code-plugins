@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * agy-driver: drive Google Antigravity (`agy`) coding sessions as "workers",
+ * claude-session-driver-agy: drive Google Antigravity (`agy`) coding sessions as "workers",
  * mirroring claude-session-driver's command vocabulary (launch / send / converse
  * / wait-for-turn / status / read-turn / read-events / stop / handoff).
  *
@@ -12,7 +12,7 @@
  * exit), with no tmux and no transcript polling for boundaries.
  *
  * agy's tool hooks (PreToolUse/PostToolUse) still fire during `-p`, so we wire a
- * workspace `.agents/hooks.json` at launch pointing back at `agy-driver hook`,
+ * workspace `.agents/hooks.json` at launch pointing back at `claude-session-driver-agy hook`,
  * which appends normalized tool events to the worker's events log and replies
  * `{"decision":"allow"}` (agy's PreToolUse fails closed without a reply).
  *
@@ -62,12 +62,12 @@ function writeMeta(name, meta) {
 }
 function requireMeta(name) {
   const meta = readMeta(name);
-  if (!meta) die(`no worker '${name}'. Launch it first: agy-driver launch ${name} <cwd>`);
+  if (!meta) die(`no worker '${name}'. Launch it first: claude-session-driver-agy launch ${name} <cwd>`);
   return meta;
 }
 
 function die(msg) {
-  process.stderr.write(`agy-driver: ${msg}\n`);
+  process.stderr.write(`claude-session-driver-agy: ${msg}\n`);
   process.exit(1);
 }
 
@@ -217,7 +217,7 @@ function truncate(s) {
 
 function cmdLaunch(args) {
   const [name, cwd] = args;
-  if (!name || !cwd) die('usage: agy-driver launch <name> <cwd>');
+  if (!name || !cwd) die('usage: claude-session-driver-agy launch <name> <cwd>');
   const abs = path.resolve(cwd);
   if (!fs.existsSync(abs)) die(`cwd does not exist: ${abs}`);
   // agy reads a single .agents/hooks.json per cwd, so two workers in one cwd
@@ -294,7 +294,7 @@ function cmdConverse(args) {
   let full = false;
   const rest = args.filter((a) => (a === '--with-turn' ? ((full = true), false) : true));
   const [name, prompt, timeout] = rest;
-  if (!name || !prompt) die('usage: agy-driver converse [--with-turn] <name> <prompt> [timeout]');
+  if (!name || !prompt) die('usage: claude-session-driver-agy converse [--with-turn] <name> <prompt> [timeout]');
   const meta = requireMeta(name);
   const { reply, conversationId: discovered, code, signal, stderr, truncated } = runTurn(
     name,
@@ -335,7 +335,7 @@ function cmdConverse(args) {
 
 function cmdSend(args) {
   const [name, prompt] = args;
-  if (!name || !prompt) die('usage: agy-driver send <name> <prompt>');
+  if (!name || !prompt) die('usage: claude-session-driver-agy send <name> <prompt>');
   const meta = requireMeta(name);
   const argv = buildAgyArgv(name, meta, prompt);
   // Fresh log per turn; --log-file in argv lets wait-for-turn recover the id.
@@ -379,7 +379,7 @@ function runPid(name) {
 
 function cmdWaitForTurn(args) {
   const [name, timeout] = args;
-  if (!name) die('usage: agy-driver wait-for-turn <name> [timeout=300]');
+  if (!name) die('usage: claude-session-driver-agy wait-for-turn <name> [timeout=300]');
   requireMeta(name);
   const pid = runPid(name);
   if (!pid) die('no background send in flight; use converse, or send first');
@@ -430,7 +430,7 @@ function finishWait(name) {
 
 function cmdStatus(args) {
   const [name] = args;
-  if (!name) die('usage: agy-driver status <name>');
+  if (!name) die('usage: claude-session-driver-agy status <name>');
   if (!readMeta(name)) {
     process.stdout.write('gone\n');
     return;
@@ -452,7 +452,7 @@ function cmdReadTurn(args) {
   let full = false;
   const rest = args.filter((a) => (a === '--full' ? ((full = true), false) : true));
   const [name] = rest;
-  if (!name) die('usage: agy-driver read-turn <name> [--full]');
+  if (!name) die('usage: claude-session-driver-agy read-turn <name> [--full]');
   const meta = requireMeta(name);
   if (!meta.conversationId) die('no turn yet for this worker');
   process.stdout.write(`${readTurnMarkdown(meta.conversationId, full)}\n`);
@@ -460,7 +460,7 @@ function cmdReadTurn(args) {
 
 function cmdReadEvents(args) {
   const [name] = args;
-  if (!name) die('usage: agy-driver read-events <name>');
+  if (!name) die('usage: claude-session-driver-agy read-events <name>');
   requireMeta(name);
   try {
     process.stdout.write(fs.readFileSync(eventsPath(name), 'utf8'));
@@ -471,7 +471,7 @@ function cmdReadEvents(args) {
 
 function cmdStop(args) {
   const [name] = args;
-  if (!name) die('usage: agy-driver stop <name>');
+  if (!name) die('usage: claude-session-driver-agy stop <name>');
   const meta = readMeta(name);
   const pid = runPid(name);
   if (pid && pidAlive(pid)) {
@@ -507,7 +507,7 @@ function cmdStop(args) {
 
 function cmdHandoff(args) {
   const [name] = args;
-  if (!name) die('usage: agy-driver handoff <name>');
+  if (!name) die('usage: claude-session-driver-agy handoff <name>');
   const meta = requireMeta(name);
   if (!meta.conversationId) die('no conversation yet; converse once first');
   process.stdout.write(
@@ -573,7 +573,7 @@ const COMMANDS = {
 };
 if (!cmd || cmd === 'help' || !COMMANDS[cmd]) {
   process.stderr.write(
-    `agy-driver — drive Antigravity (agy) sessions as workers\n\n` +
+    `claude-session-driver-agy — drive Antigravity (agy) sessions as workers\n\n` +
       `  launch <name> <cwd>                 set up a worker + workspace hooks\n` +
       `  converse [--with-turn] <name> <p> [timeout]  send a prompt, block, print reply\n` +
       `  send <name> <prompt>                send without waiting (background)\n` +

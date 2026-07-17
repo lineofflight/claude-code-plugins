@@ -1,4 +1,4 @@
-# agy-driver dev notes
+# claude-session-driver-agy dev notes
 
 Standalone driver for Antigravity (`agy`) workers. Born from a spike that proved
 agy can be driven far more simply than csd's tmux harnesses.
@@ -19,7 +19,7 @@ agy can be driven far more simply than csd's tmux harnesses.
   replaces that. The hook still adopts the id opportunistically as a backstop.
 - **Hooks are for live tool events only**, not turn boundaries. agy's CLI fires
   only `PreToolUse`/`PostToolUse` (verified — no SessionStart/Stop/SessionEnd).
-  The hook command (`agy-driver hook <Event> <name>`) appends a normalized event
+  The hook command (`claude-session-driver-agy hook <Event> <name>`) appends a normalized event
   and ALWAYS replies `{"decision":"allow"}` (agy's PreToolUse fails closed).
 - **Transcript** at `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript_full.jsonl`.
   `parseAgyTurn` maps USER_INPUT (prompt) and PLANNER_RESPONSE (assistant

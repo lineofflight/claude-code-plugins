@@ -1,4 +1,4 @@
-# agy-driver
+# claude-session-driver-agy
 
 Drive Google Antigravity (`agy`) coding sessions as background "workers", launch,
 prompt, wait, read, hand off. Mirrors [claude-session-driver](https://github.com/obra/superpowers)'s
@@ -23,7 +23,7 @@ Two env vars tune it: `AGY_BIN` overrides the `agy` binary (default `agy`), and
 ## Usage
 
 ```
-SD="${CLAUDE_PLUGIN_ROOT}/scripts/agy-driver"
+SD="${CLAUDE_PLUGIN_ROOT}/scripts/claude-session-driver-agy"
 
 node "$SD" launch my-task /path/to/project
 node "$SD" converse my-task "Refactor the auth module" 300
