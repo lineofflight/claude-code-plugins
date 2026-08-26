@@ -8,17 +8,6 @@ input=$(cat)
 current_dir=$(echo "$input" | jq -r '.workspace.current_dir')
 model_name=$(echo "$input" | jq -r '.model.display_name')
 used_pct=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
-ctx_size=$(echo "$input" | jq -r '.context_window.context_window_size // empty')
-current_usage=$(echo "$input" | jq -r '.context_window.current_usage // empty')
-
-# Scale against the 200k working compaction budget for 1M/2M models so the bar reflects actual room until compaction
-if [ -n "$used_pct" ] && [ -n "$ctx_size" ] && [ "$ctx_size" -ge 1000000 ]; then
-    if [ -n "$current_usage" ]; then
-        used_pct=$(awk -v u="$current_usage" 'BEGIN { printf "%.1f", (u / 200000.0) * 100 }')
-    else
-        used_pct=$(awk -v p="$used_pct" -v s="$ctx_size" 'BEGIN { printf "%.1f", p * (s / 200000.0) }')
-    fi
-fi
 five_h_pct=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
 seven_d_pct=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
 seven_d_reset=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
