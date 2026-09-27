@@ -1,9 +1,0 @@
-{
-  "name": "playwright",
-  "description": "Browser automation using Playwright",
-  "version": "0.1.5",
-  "author": {
-    "name": "Line of Flight"
-  },
-  "repository": "https://github.com/lineofflight/claude-code-plugins"
-}
